@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Deteksi Helm Proyek K3 - Deep Learning & Pengolahan Citra</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="bg-dark text-light">
+
+    <!-- Top Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark border-bottom border-secondary sticky-top px-3 py-2 bg-glass">
+        <div class="container-fluid">
+            <a class="navbar-brand d-flex align-items-center gap-2 fw-bold" href="#">
+                <span class="badge bg-warning text-dark p-2 rounded-3 fs-6">
+                    <i class="bi bi-shield-shaded"></i> K3
+                </span>
+                <div>
+                    <div class="fs-6 fw-bold tracking-wide">HELMET SURVEILLANCE SYSTEM</div>
+                    <div class="text-secondary small fw-normal">YOLO11 + Pengolahan Citra Digital (BSI P01-P11)</div>
+                </div>
+            </a>
+
+            <div class="d-flex align-items-center gap-3 ms-auto">
+                <div class="d-none d-md-flex align-items-center gap-2 px-3 py-1 rounded-pill bg-dark-subtle border border-secondary small">
+                    <span class="pulse-indicator bg-success"></span>
+                    <span class="text-secondary">Status:</span>
+                    <span class="fw-semibold text-success">ONLINE</span>
+                </div>
+                <div class="badge bg-secondary-subtle text-light border border-secondary px-3 py-2 rounded-pill font-monospace small">
+                    <i class="bi bi-clock me-1"></i> <span id="clock-display">00:00:00</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Container -->
+    <div class="container-fluid px-lg-4 py-3">
+
+        <!-- Top Metrics Row -->
+        <div class="row g-3 mb-3">
+            <div class="col-6 col-lg-3">
+                <div class="card stat-card border-0 bg-surface">
+                    <div class="card-body p-3 d-flex align-items-center justify-content-between">
+                        <div>
+                            <div class="text-secondary small text-uppercase fw-semibold">Pekerja Terpantau</div>
+                            <div class="fs-3 fw-bold text-light mt-1" id="stat-total-workers">0</div>
+                        </div>
+                        <div class="stat-icon bg-primary-subtle text-primary">
+                            <i class="bi bi-people-fill"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-lg-3">
+                <div class="card stat-card border-0 bg-surface">
+                    <div class="card-body p-3 d-flex align-items-center justify-content-between">
+                        <div>
+                            <div class="text-secondary small text-uppercase fw-semibold">Helm Proyek Resmi (K3)</div>
+                            <div class="fs-3 fw-bold text-success mt-1" id="stat-compliant">0</div>
+                        </div>
+                        <div class="stat-icon bg-success-subtle text-success">
+                            <i class="bi bi-shield-fill-check"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-lg-3">
+                <div class="card stat-card border-0 bg-surface">
+                    <div class="card-body p-3 d-flex align-items-center justify-content-between">
+                        <div>
+                            <div class="text-secondary small text-uppercase fw-semibold">Pelanggaran K3</div>
+                            <div class="fs-3 fw-bold text-danger mt-1" id="stat-violations">0</div>
+                        </div>
+                        <div class="stat-icon bg-danger-subtle text-danger">
+                            <i class="bi bi-exclamation-triangle-fill"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-lg-3">
+                <div class="card stat-card border-0 bg-surface">
+                    <div class="card-body p-3 d-flex align-items-center justify-content-between">
+                        <div>
+                            <div class="text-secondary small text-uppercase fw-semibold">Tingkat Kepatuhan K3</div>
+                            <div class="fs-3 fw-bold text-warning mt-1" id="stat-compliance-rate">100%</div>
+                        </div>
+                        <div class="stat-icon bg-warning-subtle text-warning">
+                            <i class="bi bi-pie-chart-fill"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <ul class="nav nav-pills custom-tabs mb-3 gap-2" id="mainTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active px-4 py-2" id="webcam-tab" data-bs-toggle="pill" data-bs-target="#tab-webcam" type="button" role="tab">
+                    <i class="bi bi-camera-video me-2"></i>Live Webcam Kamera
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link px-4 py-2" id="upload-tab" data-bs-toggle="pill" data-bs-target="#tab-upload" type="button" role="tab">
+                    <i class="bi bi-image me-2"></i>Upload Citra & Bedah Pengolahan Citra
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link px-4 py-2" id="audit-tab" data-bs-toggle="pill" data-bs-target="#tab-audit" type="button" role="tab">
+                    <i class="bi bi-clock-history me-2"></i>Log Pelanggaran K3
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link px-4 py-2" id="theory-tab" data-bs-toggle="pill" data-bs-target="#tab-theory" type="button" role="tab">
+                    <i class="bi bi-book-half me-2"></i>Landasan Teori Slide BSI (P01-P11)
+                </button>
+            </li>
+        </ul>
+
+        <!-- Tab Contents -->
+        <div class="tab-content" id="mainTabContent">
+
+            <!-- TAB 1: LIVE WEBCAM -->
+            <div class="tab-pane fade show active" id="tab-webcam" role="tabpanel">
+                <div class="row g-3">
+                    <div class="col-lg-8">
+                        <div class="card border-0 bg-surface shadow-lg h-100">
+                            <div class="card-header bg-transparent border-bottom border-secondary py-3 d-flex justify-content-between align-items-center">
+                                <div class="d-flex align-items-center gap-2">
+                                    <i class="bi bi-broadcast text-danger live-pulse"></i>
+                                    <span class="fw-semibold">Siaran Langsung CCTV / Webcam</span>
+                                </div>
+                                <div class="d-flex align-items-center gap-2">
+                                    <button class="btn btn-sm btn-outline-warning" id="btn-toggle-sound" title="Toggle Suara Peringatan">
+                                        <i class="bi bi-volume-up-fill" id="sound-icon"></i> Alarm Suara: ON
+                                    </button>
+                                    <span class="badge bg-dark-subtle border border-secondary font-monospace" id="cam-fps">0 FPS</span>
+                                </div>
+                            </div>
+                            <div class="card-body p-3 d-flex flex-column align-items-center justify-content-center bg-black rounded-bottom position-relative overflow-hidden video-wrapper">
+                                <!-- Violation Alert Banner -->
+                                <div id="live-alert-banner" class="alert-banner d-none">
+                                    <i class="bi bi-exclamation-octagon-fill fs-5"></i>
+                                    <span id="live-alert-text">PERINGATAN: PELANGGARAN K3 TERDETEKSI!</span>
+                                </div>
+
+                                <!-- Video Hidden for Processing -->
+                                <video id="webcam-video" autoplay playsinline muted class="d-none"></video>
+                                
+                                <!-- Canvas Preview -->
+                                <canvas id="output-canvas" class="img-fluid rounded border border-dark"></canvas>
+                                
+                                <!-- Placeholder when camera is off -->
+                                <div id="cam-placeholder" class="text-center py-5">
+                                    <div class="mb-3 text-secondary display-1">
+                                        <i class="bi bi-camera-video-off"></i>
+                                    </div>
+                                    <h5 class="fw-bold text-light">Kamera Belum Diaktifkan</h5>
+                                    <p class="text-secondary small max-w-400">Tekan tombol Mulai Kamera untuk memindai wajah & penutup kepala pekerja secara real-time.</p>
+                                    <button class="btn btn-warning px-4 py-2 fw-semibold" id="btn-start-cam">
+                                        <i class="bi bi-camera-video-fill me-2"></i>Mulai Kamera
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-footer bg-transparent border-top border-secondary py-2 d-flex justify-content-between align-items-center">
+                                <div class="d-flex gap-2">
+                                    <button class="btn btn-sm btn-success d-none" id="btn-resume-cam">
+                                        <i class="bi bi-play-fill me-1"></i>Lanjutkan
+                                    </button>
+                                    <button class="btn btn-sm btn-danger d-none" id="btn-stop-cam">
+                                        <i class="bi bi-stop-fill me-1"></i>Hentikan Kamera
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-light d-none" id="btn-snapshot-cam">
+                                        <i class="bi bi-camera me-1"></i>Ambil Tangkapan Layar
+                                    </button>
+                                </div>
+                                <div class="small text-secondary">
+                                    Target Model: <span class="text-warning font-monospace">YOLO11n-Helmet + DIP Pipeline</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Webcam Side Panel: Classification Rules & Quick Guide -->
+                    <div class="col-lg-4">
+                        <div class="card border-0 bg-surface shadow-lg h-100">
+                            <div class="card-header bg-transparent border-bottom border-secondary py-3">
+                                <h6 class="fw-bold mb-0"><i class="bi bi-card-checklist me-2 text-warning"></i>Kriteria Klasifikasi K3</h6>
+                            </div>
+                            <div class="card-body p-3">
+                                <!-- Real Helm Proyek -->
+                                <div class="rule-box p-3 rounded-3 mb-2 border border-success-subtle bg-success-subtle bg-opacity-10">
+                                    <div class="d-flex align-items-center justify-content-between mb-1">
+                                        <span class="badge bg-success">COMPLIANT</span>
+                                        <span class="text-success fw-bold small">REAL HELM PROYEK</span>
+                                    </div>
+                                    <div class="small text-secondary">
+                                        Plastik kaku (HDPE/ABS), warna standar K3 (Kuning, Putih, Merah, Biru, Hijau, Oranye), reflektif, tanpa lipatan kain.
+                                    </div>
+                                </div>
+
+                                <!-- Topi Biasa -->
+                                <div class="rule-box p-3 rounded-3 mb-2 border border-warning-subtle bg-warning-subtle bg-opacity-10">
+                                    <div class="d-flex align-items-center justify-content-between mb-1">
+                                        <span class="badge bg-warning text-dark">VIOLATION</span>
+                                        <span class="text-warning fw-bold small">TOPI KASUAL / BASEBALL</span>
+                                    </div>
+                                    <div class="small text-secondary">
+                                        Kain twill/camo/khaki, bayangan lidah visor melengkung. <strong>Dilarang di zona proyek.</strong>
+                                    </div>
+                                </div>
+
+                                <!-- Helm Motor -->
+                                <div class="rule-box p-3 rounded-3 mb-2 border border-info-subtle bg-info-subtle bg-opacity-10">
+                                    <div class="d-flex align-items-center justify-content-between mb-1">
+                                        <span class="badge bg-info text-dark">VIOLATION</span>
+                                        <span class="text-info fw-bold small">HELM MOTOR (FULL/HALF FACE)</span>
+                                    </div>
+                                    <div class="small text-secondary">
+                                        Kaca visor (face shield), menutupi telinga & rahang. <strong>Dilarang karena membatasi mobilitas & pendengaran K3.</strong>
+                                    </div>
+                                </div>
+
+                                <!-- Helm Sepeda -->
+                                <div class="rule-box p-3 rounded-3 mb-2 border border-warning-subtle bg-warning-subtle bg-opacity-10">
+                                    <div class="d-flex align-items-center justify-content-between mb-1">
+                                        <span class="badge bg-warning text-dark">VIOLATION</span>
+                                        <span class="text-warning fw-bold small">HELM SEPEDA AERODINAMIS</span>
+                                    </div>
+                                    <div class="small text-secondary">
+                                        Pori-pori ventilasi aerodinamis berulang pada kubah atas. <strong>Tidak tahan benturan jatuh K3.</strong>
+                                    </div>
+                                </div>
+
+                                <!-- Kerudung / Hijab -->
+                                <div class="rule-box p-3 rounded-3 mb-2 border border-purple-subtle bg-purple-subtle bg-opacity-10">
+                                    <div class="d-flex align-items-center justify-content-between mb-1">
+                                        <span class="badge badge-purple">VIOLATION</span>
+                                        <span class="text-purple fw-bold small">KERUDUNG / HIJAB</span>
+                                    </div>
+                                    <div class="small text-secondary">
+                                        Kain jatuh berlipat (drapery flow vertikal), menutupi leher/pundak. <strong>Wajib dilengkapi helm proyek K3 di luarnya.</strong>
+                                    </div>
+                                </div>
+
+                                <!-- Tanpa Helm -->
+                                <div class="rule-box p-3 rounded-3 mb-3 border border-danger-subtle bg-danger-subtle bg-opacity-10">
+                                    <div class="d-flex align-items-center justify-content-between mb-1">
+                                        <span class="badge bg-danger">BAHAYA</span>
+                                        <span class="text-danger fw-bold small">KEPALA TERBUKA (NO HELMET)</span>
+                                    </div>
+                                    <div class="small text-secondary">
+                                        Rambut/kepala terlihat tanpa pelindung. <strong>Pelanggaran kritis K3.</strong>
+                                    </div>
+                                </div>
+
+                                <div class="p-3 rounded-3 bg-dark-subtle border border-secondary small">
+                                    <div class="fw-semibold text-light mb-1"><i class="bi bi-lightbulb-fill text-warning me-1"></i>Info Dosen / Penguji:</div>
+                                    <div class="text-secondary">
+                                        Sistem ini tidak hanya mengandalkan bounding box YOLO, melainkan memverifikasi fitur fisik (spektrum warna HSV, densitas tepi Canny, dan rasio drapery Sobel) dari materi perkuliahan.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: UPLOAD CITRA & DEEP IMAGE PROCESSING BREAKDOWN -->
+            <div class="tab-pane fade" id="tab-upload" role="tabpanel">
+                <div class="row g-3">
+                    <div class="col-lg-7">
+                        <div class="card border-0 bg-surface shadow-lg">
+                            <div class="card-header bg-transparent border-bottom border-secondary py-3 d-flex justify-content-between align-items-center">
+                                <h6 class="fw-bold mb-0"><i class="bi bi-cloud-arrow-up-fill me-2 text-primary"></i>Upload Citra Pekerja Proyek</h6>
+                                <span class="badge bg-secondary-subtle text-light border border-secondary small">JPG / PNG</span>
+                            </div>
+                            <div class="card-body p-3">
+                                <!-- Upload Drag & Drop Area -->
+                                <div class="drop-zone p-4 text-center rounded-3 border-2 border-dashed border-secondary mb-3 cursor-pointer" id="drop-zone">
+                                    <input type="file" id="image-file-input" class="d-none" accept="image/*">
+                                    <div class="mb-2 text-primary display-4">
+                                        <i class="bi bi-images"></i>
+                                    </div>
+                                    <h6 class="fw-bold text-light mb-1">Seret & Lepas Gambar di Sini</h6>
+                                    <p class="text-secondary small mb-3">atau klik untuk memilih foto pekerja (Helm, Topi, Kerudung, Tanpa Helm)</p>
+                                    <button class="btn btn-sm btn-outline-primary px-3 py-1" onclick="document.getElementById('image-file-input').click()">
+                                        Pilih File Gambar
+                                    </button>
+                                </div>
+
+                                <!-- Preview Container -->
+                                <div class="position-relative d-none" id="image-result-wrapper">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span class="badge bg-primary">Hasil Anotasi Sistem</span>
+                                        <span class="small text-secondary" id="detection-summary-text"></span>
+                                    </div>
+                                    <img id="annotated-image-result" class="img-fluid rounded border border-secondary w-100" alt="Hasil Deteksi">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Side Panel: Deep Image Processing Step-by-Step -->
+                    <div class="col-lg-5">
+                        <div class="card border-0 bg-surface shadow-lg h-100">
+                            <div class="card-header bg-transparent border-bottom border-secondary py-3">
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <h6 class="fw-bold mb-0">
+                                        <i class="bi bi-cpu-fill me-2 text-warning"></i>Bedah Pengolahan Citra
+                                    </h6>
+                                    <span class="badge bg-warning text-dark font-monospace small">Materi Slide BSI</span>
+                                </div>
+                            </div>
+                            <div class="card-body p-3" id="dip-breakdown-container">
+                                <div class="text-center text-secondary py-5" id="dip-empty-state">
+                                    <i class="bi bi-diagram-3 display-4 mb-3 d-block text-secondary"></i>
+                                    <h6 class="text-light">Belum Ada Citra yang Diunggah</h6>
+                                    <p class="small text-secondary max-w-300 mx-auto">
+                                        Unggah gambar di sebelah kiri untuk melihat tahapan visual filter (CLAHE, Masker HSV, Deteksi Tepi Canny & Morfologi).
+                                    </p>
+                                </div>
+
+                                <!-- Dynamic Diagnostic Content Rendered Here via JS -->
+                                <div id="dip-active-content" class="d-none"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: AUDIT LOGS -->
+            <div class="tab-pane fade" id="tab-audit" role="tabpanel">
+                <div class="card border-0 bg-surface shadow-lg">
+                    <div class="card-header bg-transparent border-bottom border-secondary py-3 d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="fw-bold mb-0"><i class="bi bi-shield-exclamation me-2 text-danger"></i>Log Pelanggaran K3 Real-Time</h6>
+                            <div class="small text-secondary">Pencatatan otomatis insiden pelanggaran helm di area proyek</div>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-sm btn-outline-danger" id="btn-clear-logs">
+                                <i class="bi bi-trash me-1"></i>Bersihkan Log
+                            </button>
+                            <button class="btn btn-sm btn-outline-success" id="btn-export-csv">
+                                <i class="bi bi-download me-1"></i>Unduh CSV
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-dark table-hover mb-0 align-middle">
+                                <thead class="table-secondary text-uppercase small">
+                                    <tr>
+                                        <th class="py-3 px-3">Waktu</th>
+                                        <th>Bukti Snapshot</th>
+                                        <th>Jenis Pelanggaran</th>
+                                        <th>Status K3</th>
+                                        <th>Analisis Fisik Citra</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="audit-table-body">
+                                    <tr>
+                                        <td colspan="5" class="text-center py-4 text-secondary">Belum ada catatan pelanggaran. Area proyek terpantau aman!</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: TEORI & PANDUAN PRESENTASI BSI -->
+            <div class="tab-pane fade" id="tab-theory" role="tabpanel">
+                <div class="card border-0 bg-surface shadow-lg mb-3">
+                    <div class="card-header bg-transparent border-bottom border-secondary py-3">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <h5 class="fw-bold mb-0 text-warning">
+                                <i class="bi bi-mortarboard-fill me-2"></i>Korelasi Teori Pengolahan Citra Digital (Slide P01 - P15)
+                            </h5>
+                            <span class="badge bg-secondary">Universitas Bina Sarana Informatika</span>
+                        </div>
+                    </div>
+                    <div class="card-body p-4">
+                        <p class="text-light">
+                            Proyek ini mengintegrasikan materi perkuliahan <strong>Pengolahan Citra Digital</strong> berbasis proyek (Project-Based Learning) dengan arsitektur <em>State-of-The-Art Deep Learning</em> (YOLO11) untuk menciptakan sistem keselamatan K3 yang siap pakai di lapangan.
+                        </p>
+
+                        <div class="row g-3 mt-2">
+                            <!-- P02 & P03 -->
+                            <div class="col-md-6">
+                                <div class="p-3 rounded-3 bg-dark-subtle border border-secondary h-100">
+                                    <div class="fw-bold text-info mb-1"><i class="bi bi-layers-fill me-2"></i>1. Spatial Filtering & Image Enhancement (P02 & P03)</div>
+                                    <div class="small text-secondary mb-2">
+                                        Pencahayaan luar ruangan (outdoor) proyek sangat dinamis (terik vs bayangan tajam).
+                                    </div>
+                                    <ul class="small text-light ps-3 mb-0">
+                                        <li><strong>CLAHE (Slide P03):</strong> Peningkatan kontras lokal adaptif pada channel Luminance LAB (clip limit 2.5) sehingga objek helm tidak tertutup bayangan.</li>
+                                        <li><strong>Gaussian Blur (Slide P02):</strong> Reduksi noise sensor webcam menggunakan kernel 5x5 sebelum ekstraksi tepi.</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <!-- P04 -->
+                            <div class="col-md-6">
+                                <div class="p-3 rounded-3 bg-dark-subtle border border-secondary h-100">
+                                    <div class="fw-bold text-warning mb-1"><i class="bi bi-palette-fill me-2"></i>2. Model Warna & Segmentasi K3 (P04)</div>
+                                    <div class="small text-secondary mb-2">
+                                        Standar K3 mewajibkan warna helm proyek memiliki visibilitas tinggi.
+                                    </div>
+                                    <ul class="small text-light ps-3 mb-0">
+                                        <li><strong>Ruang Warna HSV (Slide P04):</strong> Memisahkan komponen Hue (Warna Murni) dan Saturation (Kemurnian) dari intensitas cahaya (Value).</li>
+                                        <li>Mengidentifikasi palet resmi K3: Kuning (Pekerja), Putih (Supervisor/Engineer), Merah (Safety Officer/K3), Biru (Mekanik), Hijau (Inspektur), Oranye (Operator).</li>
+                                        <li>Membedakan helm K3 dari topi kasual (hitam pekat, jeans) dan hijab berwarna non-standar.</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <!-- P07 -->
+                            <div class="col-md-6">
+                                <div class="p-3 rounded-3 bg-dark-subtle border border-secondary h-100">
+                                    <div class="fw-bold text-success mb-1"><i class="bi bi-border-style me-2"></i>3. Pendeteksian Tepi Canny & Sobel (P07)</div>
+                                    <div class="small text-secondary mb-2">
+                                        Membedakan material plastik kaku helm vs kain lipat (hijab / topi).
+                                    </div>
+                                    <ul class="small text-light ps-3 mb-0">
+                                        <li><strong>Operator Sobel Vertikal & Horizontal (Slide P07):</strong> Kain kerudung memiliki lipatan drapery memanjang ke bawah (gradien vertikal Sobel-Y jauh lebih besar dibanding horizontal).</li>
+                                        <li><strong>Densitas Tepi Canny:</strong> Permukaan plastik helm proyek sangat halus dengan densitas tepi interior yang rendah (< 20%), sedangkan kain topi/kerudung memiliki tekstur anyaman & lipatan rapat.</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <!-- P09 & P11 -->
+                            <div class="col-md-6">
+                                <div class="p-3 rounded-3 bg-dark-subtle border border-secondary h-100">
+                                    <div class="fw-bold text-danger mb-1"><i class="bi bi-bounding-box-circles me-2"></i>4. Segmentasi & Morfologi Citra (P09 & P11)</div>
+                                    <div class="small text-secondary mb-2">
+                                        Analisis bentuk kubah (dome) vs lidah topi (visor) vs drapery kerudung.
+                                    </div>
+                                    <ul class="small text-light ps-3 mb-0">
+                                        <li><strong>Morfologi Opening & Closing (Slide P11):</strong> Menghilangkan noise bintik rambut dan menutup lubang akibat pantulan kilau cahaya (specular sheen) pada helm.</li>
+                                        <li><strong>Convexity & Symmetry (Slide P09):</strong> Helm K3 memiliki bentuk kubah setengah lingkaran simetris, sedangkan topi memiliki tonjolan asimetris visor depan.</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
