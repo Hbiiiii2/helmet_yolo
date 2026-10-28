@@ -49,6 +49,8 @@ SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
 (STATIC_DIR / "js").mkdir(parents=True, exist_ok=True)
 
 # Mount static files & templates
+if SAMPLES_DIR.exists():
+    app.mount("/static/samples", StaticFiles(directory=str(SAMPLES_DIR)), name="samples")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
@@ -92,6 +94,15 @@ async def index_page(request: Request):
 @app.get("/favicon.ico")
 async def favicon():
     return JSONResponse(status_code=204, content={})
+
+
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "service": "k3-helmet-yolo",
+        "detector_ready": detector is not None
+    }
 
 
 @app.post("/api/detect/image")

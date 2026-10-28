@@ -1,0 +1,55 @@
+# Git
+.git
+.gitignore
+
+# Python cache & virtual environments
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Large PDF presentation slides (~45MB)
+0093-*.pdf
+*.pdf
+
+# Compressed archives & temporary evaluation images
+*.rar
+*.zip
+*.tar.gz
+crop_Helmet*.jpg
+
+# Training output artifacts & charts (weights are kept!)
+content/runs/detect/runs_colab/helmet/helmet_yolo-2/Chart/
+content/runs/detect/runs_colab/helmet/helmet_yolo-2/train_batch*.jpg
+content/runs/detect/runs_colab/helmet/helmet_yolo-2/val_batch*.jpg
+content/runs/detect/runs_colab/helmet/helmet_yolo-2/results.png
+content/runs/detect/runs_colab/helmet/helmet_yolo-2/results.csv
+content/runs/detect/runs_colab/helmet/helmet_yolo-2/Chart Budewi.rar
+
+# Uploads & Snapshots (keep directories, ignore runtime contents)
+uploads/*
+!uploads/.gitkeep
+snapshots/*
+!snapshots/.gitkeep
+
+# IDE and OS files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+ehthumbs.db
+[Dd]esktop.ini
+
+# Docker / Documentation files
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+README.md
+run.bat
