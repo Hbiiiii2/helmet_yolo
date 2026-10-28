@@ -164,26 +164,35 @@
                                         <i class="bi bi-camera-video-off"></i>
                                     </div>
                                     <h5 class="fw-bold text-light">Kamera Belum Diaktifkan</h5>
-                                    <p class="text-secondary small max-w-400">Tekan tombol Mulai Kamera untuk memindai wajah & penutup kepala pekerja secara real-time.</p>
-                                    <button class="btn btn-warning px-4 py-2 fw-semibold" id="btn-start-cam">
-                                        <i class="bi bi-camera-video-fill me-2"></i>Mulai Kamera
-                                    </button>
+                                    <p class="text-secondary small max-w-400 mx-auto px-2">Tekan tombol Mulai Kamera untuk memindai wajah & penutup kepala pekerja secara real-time.</p>
+                                    <div class="d-flex justify-content-center gap-2 flex-wrap mt-3">
+                                        <button class="btn btn-warning px-4 py-2 fw-semibold" id="btn-start-cam">
+                                            <i class="bi bi-camera-video-fill me-2"></i>Mulai Kamera
+                                        </button>
+                                        <button class="btn btn-outline-info px-3 py-2 fw-semibold" id="btn-switch-cam-init" title="Ganti Kamera Depan/Belakang">
+                                            <i class="bi bi-arrow-repeat me-1"></i><span id="cam-mode-text-init">Mode: Kamera Belakang</span>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="card-footer bg-transparent border-top border-secondary py-2 d-flex justify-content-between align-items-center">
-                                <div class="d-flex gap-2">
+                            <div class="card-footer bg-transparent border-top border-secondary py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                                <div class="d-flex flex-wrap gap-2 align-items-center">
                                     <button class="btn btn-sm btn-success d-none" id="btn-resume-cam">
                                         <i class="bi bi-play-fill me-1"></i>Lanjutkan
                                     </button>
                                     <button class="btn btn-sm btn-danger d-none" id="btn-stop-cam">
                                         <i class="bi bi-stop-fill me-1"></i>Hentikan Kamera
                                     </button>
-                                    <button class="btn btn-sm btn-outline-light d-none" id="btn-snapshot-cam">
-                                        <i class="bi bi-camera me-1"></i>Ambil Tangkapan Layar
+                                    <button class="btn btn-sm btn-outline-info d-none" id="btn-switch-cam" title="Ganti Kamera Depan/Belakang">
+                                        <i class="bi bi-arrow-repeat me-1"></i><span id="cam-mode-text">Ganti Kamera</span>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-light d-none" id="btn-snapshot-cam" title="Ambil Foto Snapshot">
+                                        <i class="bi bi-camera me-1"></i>Snapshot
                                     </button>
                                 </div>
-                                <div class="small text-secondary">
-                                    Target Model: <span class="text-warning font-monospace">YOLO11n-Helmet + DIP Pipeline</span>
+                                <div class="small text-secondary d-flex align-items-center gap-2">
+                                    <span class="badge bg-secondary font-monospace" id="cam-facing-badge">Belakang</span>
+                                    <span class="d-none d-sm-inline">Model: <span class="text-warning font-monospace">YOLO11n-Helmet</span></span>
                                 </div>
                             </div>
                         </div>
