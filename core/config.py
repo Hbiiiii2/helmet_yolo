@@ -17,40 +17,43 @@ def get_model_path():
 
 # Detection Thresholds
 CONFIDENCE_THRESHOLD = 0.35
+OUTDOOR_CANDIDATE_CONF = 0.22
 IOU_THRESHOLD = 0.45
 
 # K3 Helmet Standard Strict Color Definitions in HSV (Slide P04: Model Warna)
 # Format: [H_min, S_min, V_min], [H_max, S_max, V_max]
-# Warna K3 harus murni & jenuh tinggi (bukan cokelat/khaki topi, bukan warna kulit)
+# Dikalibrasi agar tahan terhadap Backlight (bayangan) & Glare Matahari (outdoor)
+# namun tetap mengecualikan cokelat/khaki topi dan warna kulit wajah
 K3_COLOR_RANGES = {
     "Kuning K3 (Pekerja/Kontraktor)": {
-        "lower": (18, 65, 80),
+        "lower": (18, 82, 80),
         "upper": (38, 255, 255),
         "bgr_preview": (0, 215, 255)  # Gold/Yellow
     },
     "Putih K3 (Supervisor/Engineer/Tamu)": {
         "is_rgb_balanced": True,
-        "min_brightness": 180,
-        "max_diff": 25,
+        "min_brightness": 145,
+        "max_diff": 32,
+        "max_saturation": 46,
         "bgr_preview": (245, 245, 245)  # Pure White
     },
     "Merah K3 (Safety Officer/K3/Damkar)": [
-        {"lower": (0, 130, 130), "upper": (8, 255, 255)},
-        {"lower": (168, 130, 130), "upper": (180, 255, 255)}
+        {"lower": (0, 115, 75), "upper": (8, 255, 255)},
+        {"lower": (166, 105, 75), "upper": (180, 255, 255)}
     ],
     "Biru K3 (Teknisi Listrik/Mekanik)": {
-        "lower": (85, 60, 60),
-        "upper": (135, 255, 255),
+        "lower": (85, 55, 50),
+        "upper": (138, 255, 255),
         "bgr_preview": (230, 115, 0)  # Blue
     },
     "Hijau K3 (Inspektur Lingkungan)": {
-        "lower": (38, 55, 60),
+        "lower": (38, 55, 55),
         "upper": (85, 255, 255),
         "bgr_preview": (50, 205, 50)  # Lime/Green
     },
     "Oranye K3 (Operator Alat Berat/Surveyor)": {
-        "lower": (8, 90, 90),
-        "upper": (20, 255, 255),
+        "lower": (8, 135, 85),
+        "upper": (19, 255, 255),
         "bgr_preview": (0, 140, 255)  # Orange
     }
 }

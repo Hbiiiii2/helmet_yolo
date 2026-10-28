@@ -393,6 +393,10 @@ function renderDIPBreakdown(detections) {
                         <table class="table table-sm table-dark table-bordered mb-0 small" style="font-size: 0.75rem;">
                             <tbody>
                                 <tr>
+                                    <td class="text-secondary">Kondisi Cahaya Outdoor:</td>
+                                    <td class="fw-bold text-info">${det.lighting_condition || 'Normal'}</td>
+                                </tr>
+                                <tr>
                                     <td class="text-secondary">Warna Standar K3:</td>
                                     <td class="fw-bold text-light">${det.detected_k3_color} (${det.k3_color_ratio}%)</td>
                                 </tr>

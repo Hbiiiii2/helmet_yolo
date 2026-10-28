@@ -49,6 +49,8 @@ SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
 (STATIC_DIR / "js").mkdir(parents=True, exist_ok=True)
 
 # Mount static files & templates
+if SAMPLES_DIR.exists():
+    app.mount("/static/samples", StaticFiles(directory=str(SAMPLES_DIR)), name="samples")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
@@ -92,6 +94,16 @@ async def index_page(request: Request):
 @app.get("/favicon.ico")
 async def favicon():
     return JSONResponse(status_code=204, content={})
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint untuk Railway dan Docker container orchestration."""
+    return {
+        "status": "healthy",
+        "service": "k3-helmet-yolo",
+        "detector_ready": detector is not None
+    }
 
 
 @app.post("/api/detect/image")
@@ -148,6 +160,7 @@ async def detect_image(
                 "visor_shadow": round(float(cls_info.get("visor_shadow", 0.0)) * 100, 1),
                 "dark_visor_ratio": round(float(cls_info.get("dark_visor_ratio", 0.0)) * 100, 1),
                 "hair_ratio": round(float(cls_info.get("hair_ratio", 0.0)) * 100, 1),
+                "lighting_condition": cls_info.get("lighting_condition", "Normal"),
                 "diagnostics": {
                     "original_crop": crop_b64,
                     "enhanced_roi": enhanced_b64,

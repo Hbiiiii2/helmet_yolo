@@ -90,3 +90,64 @@ Akses di browser:
 - **Live Webcam CCTV**: Deteksi langsung dari kamera dengan alarm suara dual-tone otomatis saat terjadi pelanggaran (topi, helm motor, helm sepeda, kerudung, tanpa helm).
 - **Bedah Pengolahan Citra**: Unggah foto pekerja untuk melihat tahapan visual filter (Original $\rightarrow$ CLAHE $\rightarrow$ Masker K3 $\rightarrow$ Tepi Canny $\rightarrow$ Metrik Fisik).
 - **Log Pelanggaran Real-Time**: Snapshot bukti pelanggaran yang dapat diekspor ke CSV.
+
+---
+
+## 🐳 Panduan Deploy ke Docker & Cloud Railway
+
+Projek ini sudah dilengkapi konfigurasi **Production-Ready Docker** & **Railway Cloud Deployment** (`Dockerfile`, `docker-compose.yml`, `railway.json`, `.dockerignore`).
+
+### 1. Menjalankan via Docker (Lokal)
+Pastikan Docker Desktop sudah terpasang dan aktif, lalu jalankan:
+```bash
+# Build & jalankan container
+docker compose up --build
+```
+Akses di browser:
+👉 **`http://localhost:8000`**
+
+Untuk mematikan container:
+```bash
+docker compose down
+```
+
+---
+
+### 2. Deploy ke Cloud Railway (Gratis & Cepat)
+
+#### Opsi A: Deploy via GitHub (Paling Mudah)
+1. Push repository ini ke akun GitHub Anda:
+   ```bash
+   git add .
+   git commit -m "feat: ready to deploy to railway with docker"
+   git push origin main
+   ```
+2. Buka dashboard [Railway.app](https://railway.app/).
+3. Klik tombol **`+ New Project`** $\rightarrow$ Pilih **`Deploy from GitHub repo`**.
+4. Pilih repository `helmet_yolo` ini.
+5. Railway akan otomatis mendeteksi `railway.json` & `Dockerfile`, menginstal PyTorch CPU, dan meluncurkan container.
+6. Masuk ke tab **Settings** pada service Anda di Railway $\rightarrow$ di bagian **Networking**, klik **`Generate Domain`** (contoh: `helmet-yolo-production.up.railway.app`).
+7. Buka link domain tersebut di browser. Selesai! Web Dashboard K3 siap digunakan secara publik dengan HTTPS!
+
+#### Opsi B: Deploy via Railway CLI
+Jika memiliki Node.js / Railway CLI:
+```bash
+# 1. Install CLI jika belum
+npm i -g @railway/cli
+
+# 2. Login ke akun Railway
+railway login
+
+# 3. Inisialisasi projek
+railway init
+
+# 4. Deploy langsung dari terminal lokal
+railway up
+```
+
+#### Keunggulan Konfigurasi Docker / Railway di Projek Ini:
+- ⚡ **PyTorch CPU Wheel Optimization**: Mengunduh wheel PyTorch CPU resmi (~180MB) alih-alih CUDA package (~3GB) sehingga build di Railway selesai dalam 2-3 menit dan hemat kuota resource.
+- 🛡️ **Dynamic Port Binding**: Otomatis mendengarkan environment variable `$PORT` dari Railway.
+- 🩺 **Dedicated Healthcheck**: Dilengkapi endpoint `/health` untuk auto-recovery Railway jika terjadi gangguan.
+- 🧹 **Clean Context (.dockerignore)**: File PDF materi slide (~45MB) dan temporary files di-exclude agar ukuran image Docker tetap ringan (~1.2GB).
+
