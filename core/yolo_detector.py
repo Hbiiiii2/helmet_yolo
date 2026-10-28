@@ -7,6 +7,7 @@ terintegrasi dengan:
 3. HeadwearClassifier (Metode Pengolahan Citra Digital Slide P02-P11)
 """
 
+import os
 import cv2
 import numpy as np
 from typing import List, Dict, Any, Tuple
@@ -66,8 +67,21 @@ class SafetyHelmetDetector:
         print(f"[+] Model berhasil dimuat. Kelas model: {self.names}")
 
         # Inisialisasi detektor wajah Cascade sebagai fallback pengaman di kondisi backlight/glare ekstrem
-        cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-        self.face_cascade = cv2.CascadeClassifier(cascade_path)
+        self.face_cascade = None
+        try:
+            cascade_cls = getattr(cv2, "CascadeClassifier", None)
+            if cascade_cls is None and hasattr(cv2, "objdetect"):
+                cascade_cls = getattr(cv2.objdetect, "CascadeClassifier", None)
+
+            if cascade_cls is not None and hasattr(cv2, "data") and hasattr(cv2.data, "haarcascades"):
+                cascade_path = os.path.join(cv2.data.haarcascades, "haarcascade_frontalface_default.xml")
+                if os.path.exists(cascade_path):
+                    loaded_cascade = cascade_cls(cascade_path)
+                    if not loaded_cascade.empty():
+                        self.face_cascade = loaded_cascade
+        except Exception as e:
+            print(f"[*] Info: CascadeClassifier fallback tidak aktif ({e}), sistem tetap berjalan penuh dengan YOLO11.")
+
         self.tile_clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
 
     def _parse_yolo_boxes(
