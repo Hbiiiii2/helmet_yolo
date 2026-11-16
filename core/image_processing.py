@@ -48,69 +48,28 @@ class ImageProcessingPipeline:
 
     def extract_k3_color_mask(self, bgr_img: np.ndarray, hsv_img: np.ndarray) -> Tuple[np.ndarray, str, float, Dict[str, float]]:
         """
-        Slide P04: Model Warna HSV & RGB terkalibrasi ketat.
-        Penting: Evaluasi warna helm diutamakan pada kubah atas (crown/top 60%)
-        agar warna kulit wajah/dahi manusia (yang sering kemerahan/kuning) tidak salah dideteksi sebagai helm!
+        Slide P09 & P11: Segmentasi Kubah Pelindung Kepala (Otsu Thresholding + Morfologi).
+        Evaluasi difokuskan pada kubah atas (crown/top 60%) tanpa filter warna helm proyek.
         """
         h, w = hsv_img.shape[:2]
-        crown_h = max(4, int(h * 0.60))
+        crown_h = min(h, max(4, int(h * 0.60)))
         crown_bgr = bgr_img[:crown_h, :]
-        crown_hsv = hsv_img[:crown_h, :]
         crown_pixels = max(1, crown_h * w)
 
+        crown_gray = cv2.cvtColor(crown_bgr, cv2.COLOR_BGR2GRAY)
+        blurred = cv2.GaussianBlur(crown_gray, (5, 5), 0)
+        _, otsu_mask = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
         combined_mask = np.zeros((h, w), dtype=np.uint8)
-        color_scores = {}
-        best_color_name = "Bukan Warna K3"
-        max_ratio = 0.0
-
-        B, G, R = cv2.split(crown_bgr.astype(float))
-
-        for color_name, range_data in K3_COLOR_RANGES.items():
-            if isinstance(range_data, dict) and range_data.get("is_rgb_balanced"):
-                # Putih K3: R, G, B semua tinggi (>185) DAN seimbang (|R - B| <= 22)
-                # Mengecualikan khaki/cokelat/kulit di mana R >> B
-                min_b = range_data.get("min_brightness", 185)
-                max_d = range_data.get("max_diff", 22)
-                mask_bool = (
-                    (R >= min_b) & (G >= min_b) & (B >= min_b) &
-                    (np.abs(R - G) <= max_d) &
-                    (np.abs(G - B) <= max_d) &
-                    (np.abs(R - B) <= max_d)
-                )
-                mask = mask_bool.astype(np.uint8) * 255
-            elif isinstance(range_data, list):
-                # Merah K3 (S >= 120 agar tidak mendeteksi warna kulit dahi)
-                mask = np.zeros((crown_h, w), dtype=np.uint8)
-                for r in range_data:
-                    lower = np.array([r["lower"][0], max(120, r["lower"][1]), r["lower"][2]])
-                    m = cv2.inRange(crown_hsv, lower, np.array(r["upper"]))
-                    mask = cv2.bitwise_or(mask, m)
-            else:
-                lower = np.array(range_data["lower"])
-                upper = np.array(range_data["upper"])
-                mask = cv2.inRange(crown_hsv, lower, upper)
-
-            # Hitung proporsi warna pada kubah atas
-            pixel_count = cv2.countNonZero(mask)
-            ratio = pixel_count / crown_pixels
-            color_scores[color_name] = ratio
-
-            if ratio > max_ratio and ratio > 0.14:
-                max_ratio = ratio
-                best_color_name = color_name
-
-            # Tempelkan ke combined mask (hanya di zona kubah)
-            combined_mask[:crown_h, :] = cv2.bitwise_or(combined_mask[:crown_h, :], mask)
+        combined_mask[:crown_h, :] = otsu_mask
 
         # Slide P11: Morfologi Opening (bersihkan noise) & Closing (tutup celah)
         clean_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_OPEN, self.kernel_open)
         clean_mask = cv2.morphologyEx(clean_mask, cv2.MORPH_CLOSE, self.kernel_close)
 
         overall_ratio = cv2.countNonZero(clean_mask[:crown_h, :]) / crown_pixels
-        if overall_ratio < 0.12:
-            best_color_name = "Bukan Warna K3"
 
-        return clean_mask, best_color_name, overall_ratio, color_scores
+        return clean_mask, "Helm Proyek K3", float(overall_ratio), {}
 
     def detect_aerodynamic_vents(self, gray_roi: np.ndarray, hsv_roi: np.ndarray) -> Tuple[int, float]:
         """

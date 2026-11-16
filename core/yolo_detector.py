@@ -53,7 +53,7 @@ class SafetyHelmetDetector:
             return {"annotated_frame": frame, "detections": [], "stats": {}}
 
         orig_h, orig_w = frame.shape[:2]
-        results = self.model(frame, conf=conf, iou=iou, verbose=False)
+        results = self.model(frame, conf=conf, iou=iou, agnostic_nms=True, verbose=False)
         
         boxes_data = results[0].boxes
         detections = []
@@ -141,7 +141,7 @@ class SafetyHelmetDetector:
                 hx1, hy1, hx2, hy2 = h_res["bbox"]
                 hcx = (hx1 + hx2) / 2
                 hcy = (hy1 + hy2) / 2
-                if px1 <= hcx <= px2 and py1 <= hcy <= (py1 + ph * 0.45):
+                if (px1 - pw * 0.2) <= hcx <= (px2 + pw * 0.2) and (py1 - ph * 0.2) <= hcy <= (py1 + ph * 0.55):
                     head_center_in_p = True
                     break
 
@@ -211,7 +211,6 @@ class SafetyHelmetDetector:
             cls_info = h_item["classification"]
             lbl = cls_info["label"]
             conf_val = cls_info["confidence"]
-            k3_color = cls_info["detected_k3_color"]
 
             stats_count[lbl] = stats_count.get(lbl, 0) + 1
 
@@ -219,7 +218,7 @@ class SafetyHelmetDetector:
             if lbl == LABEL_REAL_HELMET:
                 bgr_color = (0, 210, 80) # Hijau terang
                 label_txt = f"HELM PROYEK K3 ({conf_val:.0%})"
-                sub_txt = f"{k3_color}"
+                sub_txt = "Standar K3 Aman"
             elif lbl == LABEL_TOPI:
                 bgr_color = (0, 140, 255) # Oranye/Amber
                 label_txt = f"TOPI (BUKAN HELM)"

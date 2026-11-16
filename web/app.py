@@ -176,7 +176,7 @@ async def detect_image(
                     "badge": cls_info["badge"],
                     "color_hex": cls_info["color_hex"],
                     "thumbnail": crop_b64,
-                    "details": f"Warna K3: {cls_info['detected_k3_color']}, Densitas Tepi: {det_item['edge_density']}%"
+                    "details": f"Densitas Tepi: {det_item['edge_density']}%, Rasio Drapery: {det_item['drapery_ratio']}"
                 })
 
         return {
@@ -295,8 +295,8 @@ async def get_theory_mapping():
             },
             {
                 "slide": "Slide P04: Model Warna (Color Models)",
-                "concept": "Ruang Warna RGB vs HSV & Color Slicing",
-                "implementation": "Mengonversi ROI ke HSV untuk segmentasi warna helm standar K3 (Kuning, Putih, Oranye, Merah, Biru, Hijau). Membedakan helm K3 dari topi kasual (hitam/jeans/pola) dan kerudung."
+                "concept": "Ruang Warna RGB vs HSV & Segmentasi Fitur Kepala",
+                "implementation": "Mengonversi ROI ke ruang warna HSV untuk mendeteksi fitur kulit dan rambut pada area kepala serta membedakan helm proyek dari topi kasual atau kerudung tanpa membeda-bedakan warna helm proyek."
             },
             {
                 "slide": "Slide P07: Pendeteksian Tepi (Edge Detection)",

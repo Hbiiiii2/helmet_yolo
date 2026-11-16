@@ -48,7 +48,6 @@ class HeadwearClassifier:
         features = self.ip_pipeline.inspect_patch(head_roi, person_crop)
         
         k3_ratio = features.get("k3_color_ratio", 0.0)
-        best_color = features.get("best_color_name", "Bukan Warna K3")
         edge_density = features.get("edge_density", 0.0)
         drapery_ratio = features.get("drapery_ratio", 1.0)
         solidity = features.get("solidity", 0.8)
@@ -67,10 +66,10 @@ class HeadwearClassifier:
         is_hijab_structural = features.get("is_hijab", False)
 
         # -------------------------------------------------------------
-        # 1. EVALUASI CIRI FISIK (Slide P02-P11)
+        # 1. EVALUASI CIRI FISIK (Slide P02-P11) TANPA SYARAT WARNA HELM
         # -------------------------------------------------------------
-        # Kerudung / Hijab: Kain penutup kepala berlanjut ke leher tanpa kulit terbuka, bukan warna K3 kaku
-        is_kerudung = is_hijab_structural and (best_color == "Bukan Warna K3" or k3_ratio < 0.20)
+        # Kerudung / Hijab: Kain penutup kepala berlanjut ke leher dengan lipatan/tekstur kain
+        is_kerudung = is_hijab_structural and (edge_density > 0.12 or drapery_ratio > 1.20)
 
         # Helm Sepeda: Pori ventilasi berulang (>= 2) pada kubah atas
         is_helm_sepeda = (vent_count >= 3 and dome_edge_density > 0.10) or (vent_count >= 2 and dome_edge_density > 0.15)
@@ -80,47 +79,39 @@ class HeadwearClassifier:
 
         # Topi Biasa / Baseball Cap:
         # Karakteristik lidah visor memproyeksikan bayangan gelap di dahi bawah visor,
-        # warna non-K3 (khaki/gelap/camo), dan asimetri
-        has_visor_shadow = visor_shadow >= 0.15
-        is_non_k3_tone = (best_color == "Bukan Warna K3") or (k3_ratio < 0.15)
+        # tekstur/corak kain non-plastik
+        has_visor_shadow = visor_shadow >= 0.18
         is_topi = (
             (has_visor_shadow and (is_khaki or r_minus_b > 22.0 or visor_horizontal_edge > 25.0)) or
-            (is_non_k3_tone and has_visor_shadow) or
-            (is_non_k3_tone and is_khaki and h_std > 38.0)
+            (is_khaki and h_std > 38.0 and edge_density > 0.18)
         )
 
         # Helm Proyek Resmi K3:
-        # a. Tempurung kubah plastik kaku memiliki warna standar K3 solid (>= 15%)
-        # b. Tidak ada rambut asli manusia di ubun-ubun kepala (hair_ratio < 0.12)
-        # c. Bebas dari ciri aksesoris lain (bukan pori sepeda, bukan kaca visor motor)
-        is_solid_k3 = (k3_ratio >= 0.15) and (best_color != "Bukan Warna K3") and (hair_ratio < 0.12)
-        is_real_helmet = is_solid_k3 and (not is_helm_sepeda) and (not is_helm_motor)
+        # Tidak membatasi warna helm; cukup pastikan bukan aksesoris non-K3 dan tanpa rambut terbuka
+        is_real_helmet = (hair_ratio < 0.15) and (not is_helm_sepeda) and (not is_helm_motor) and (not is_topi) and (not is_kerudung)
 
         # -------------------------------------------------------------
         # 2. ENSEMBLE DECISION DENGAN PRIORITAS KESELAMATAN K3
         # -------------------------------------------------------------
         if yolo_class == "helmet":
             # YOLO mendeteksi adanya objek penutup kepala.
-            # Verifikasi fisik digital mendalam menentukan apakah ini K3 ASLI atau IMPOSTOR:
+            # Semua warna helm proyek langsung masuk sebagai 1 kelas HELM PROYEK K3,
+            # kecuali terdeteksi ciri fisik kuat impostor (sepeda/motor/kerudung/topi):
             if is_helm_sepeda:
                 final_label = LABEL_HELM_SEPEDA
                 confidence = max(yolo_conf, 0.85)
             elif is_helm_motor:
                 final_label = LABEL_HELM_MOTOR
                 confidence = max(yolo_conf, 0.88)
-            elif is_real_helmet:
-                final_label = LABEL_REAL_HELMET
-                confidence = max(yolo_conf, 0.85 + min(0.12, k3_ratio * 0.2))
             elif is_kerudung:
                 final_label = LABEL_KERUDUNG
                 confidence = max(yolo_conf, 0.88)
-            elif is_topi or is_non_k3_tone:
-                # Objek bertengger di kepala tapi bukan helm K3 resmi -> TOPI
+            elif is_topi:
                 final_label = LABEL_TOPI
                 confidence = max(yolo_conf, 0.82)
             else:
-                final_label = LABEL_TOPI
-                confidence = 0.78
+                final_label = LABEL_REAL_HELMET
+                confidence = max(yolo_conf, 0.88)
 
         elif yolo_class == "no-helmet":
             # YOLO mendeteksi kepala tanpa helm (atau estimasi kepala dari person).
@@ -169,7 +160,7 @@ class HeadwearClassifier:
             "badge": meta["badge"],
             "color_hex": meta["color"],
             "description": meta["description"],
-            "detected_k3_color": best_color,
+            "detected_k3_color": "Helm Proyek K3",
             "k3_color_ratio": float(k3_ratio),
             "edge_density": float(edge_density),
             "drapery_ratio": float(drapery_ratio),

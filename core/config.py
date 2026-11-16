@@ -19,41 +19,9 @@ def get_model_path():
 CONFIDENCE_THRESHOLD = 0.35
 IOU_THRESHOLD = 0.45
 
-# K3 Helmet Standard Strict Color Definitions in HSV (Slide P04: Model Warna)
-# Format: [H_min, S_min, V_min], [H_max, S_max, V_max]
-# Warna K3 harus murni & jenuh tinggi (bukan cokelat/khaki topi, bukan warna kulit)
-K3_COLOR_RANGES = {
-    "Kuning K3 (Pekerja/Kontraktor)": {
-        "lower": (18, 65, 80),
-        "upper": (38, 255, 255),
-        "bgr_preview": (0, 215, 255)  # Gold/Yellow
-    },
-    "Putih K3 (Supervisor/Engineer/Tamu)": {
-        "is_rgb_balanced": True,
-        "min_brightness": 180,
-        "max_diff": 25,
-        "bgr_preview": (245, 245, 245)  # Pure White
-    },
-    "Merah K3 (Safety Officer/K3/Damkar)": [
-        {"lower": (0, 130, 130), "upper": (8, 255, 255)},
-        {"lower": (168, 130, 130), "upper": (180, 255, 255)}
-    ],
-    "Biru K3 (Teknisi Listrik/Mekanik)": {
-        "lower": (85, 60, 60),
-        "upper": (135, 255, 255),
-        "bgr_preview": (230, 115, 0)  # Blue
-    },
-    "Hijau K3 (Inspektur Lingkungan)": {
-        "lower": (38, 55, 60),
-        "upper": (85, 255, 255),
-        "bgr_preview": (50, 205, 50)  # Lime/Green
-    },
-    "Oranye K3 (Operator Alat Berat/Surveyor)": {
-        "lower": (8, 90, 90),
-        "upper": (20, 255, 255),
-        "bgr_preview": (0, 140, 255)  # Orange
-    }
-}
+# Definisi rentang warna helm proyek dihapus agar semua warna helm proyek
+# terdeteksi seragam sebagai satu kelas tunggal (HELM PROYEK K3).
+K3_COLOR_RANGES = {}
 
 # Classification Labels
 LABEL_REAL_HELMET = "REAL_HELMET"
@@ -69,7 +37,7 @@ STATUS_META = {
         "badge": "COMPLIANT",
         "color": "#10b981", # Green
         "icon": "shield-check",
-        "description": "Memenuhi standar K3 (kubah plastik kaku HDPE/ABS, warna standar, telinga terbuka)."
+        "description": "Memenuhi standar K3 (kubah plastik kaku HDPE/ABS, pelindung kepala utuh, telinga terbuka)."
     },
     LABEL_TOPI: {
         "title": "PERINGATAN: HANYA TOPI (BUKAN HELM K3)",

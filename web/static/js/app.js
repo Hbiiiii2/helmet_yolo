@@ -610,11 +610,11 @@ function renderDIPBreakdown(detections) {
                                 <div class="small fw-semibold text-info" style="font-size:0.7rem">2. CLAHE (P03)</div>
                             </div>
                         </div>
-                        <!-- Step 3: HSV Color Mask (Slide P04) -->
+                        <!-- Step 3: Dome Mask (Slide P09) -->
                         <div class="col-6 col-sm-3">
                             <div class="diag-card p-1 text-center">
                                 <img src="${d.color_mask}" class="diag-thumb rounded mb-1">
-                                <div class="small fw-semibold text-warning" style="font-size:0.7rem">3. Mask K3 (P04)</div>
+                                <div class="small fw-semibold text-warning" style="font-size:0.7rem">3. Mask Kubah (P09)</div>
                             </div>
                         </div>
                         <!-- Step 4: Canny Edge (Slide P07) -->
@@ -630,10 +630,6 @@ function renderDIPBreakdown(detections) {
                     <div class="table-responsive">
                         <table class="table table-sm table-dark table-bordered mb-0 small" style="font-size: 0.75rem;">
                             <tbody>
-                                <tr>
-                                    <td class="text-secondary">Warna Standar K3:</td>
-                                    <td class="fw-bold text-light">${det.detected_k3_color} (${det.k3_color_ratio}%)</td>
-                                </tr>
                                 <tr>
                                     <td class="text-secondary">Densitas Tepi Interior:</td>
                                     <td class="fw-bold text-light">${det.edge_density}% ${det.edge_density < 20 ? '(Permukaan Halus Plastik)' : '(Tekstur Kain Berlipat)'}</td>
