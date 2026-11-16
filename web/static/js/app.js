@@ -1,6 +1,7 @@
 /**
- * K3 Smart Helmet Surveillance Frontend Application (High-Performance Mobile & Desktop Edition)
+ * K3 Smart Helmet Surveillance Frontend Application (Open Design + Mobile Responsive Edition)
  * Features:
+ * - Accessible tab navigation with URL hash sync (no Bootstrap JS dependency)
  * - 30-60 FPS Decoupled Smooth Camera Viewfinder (Zero Stutter / Lag)
  * - Dynamic Front & Rear Camera Switching (facingMode: 'environment' vs 'user')
  * - Ultra-lightweight Async Vector AI Loop (~15KB per frame, ~95% bandwidth reduction)
@@ -38,6 +39,77 @@ let aiFps = 0;
 let displayFrameCount = 0;
 let aiFrameCount = 0;
 let lastFpsUpdateTime = performance.now();
+
+// Map K3 label or color_hex to Open Design semantic status pill class
+function getStatusPillClass(label, colorHex, badge) {
+    const lbl = String(label || '').toUpperCase();
+    const hex = String(colorHex || '').toLowerCase();
+    const bdg = String(badge || '').toUpperCase();
+
+    if (lbl === 'REAL_HELMET' || hex === '#10b981' || bdg === 'COMPLIANT') {
+        return 'status-pill--compliant';
+    }
+    if (lbl === 'HELM_MOTOR' || hex === '#06b6d4') {
+        return 'status-pill--cyan';
+    }
+    if (lbl === 'KERUDUNG' || hex === '#8b5cf6') {
+        return 'status-pill--purple';
+    }
+    if (lbl === 'NO_HELMET' || hex === '#ef4444' || bdg === 'DANGER' || bdg === 'BAHAYA') {
+        return 'status-pill--danger';
+    }
+    return 'status-pill--warning';
+}
+
+// Accessible Tab Switching + URL Hash Persistence
+function setupTabNavigation() {
+    const tabButtons = document.querySelectorAll('#mainTab [data-bs-toggle="pill"]');
+    const tabPanes = document.querySelectorAll('#mainTabContent .tab-pane');
+    const brandLink = document.querySelector('.brand');
+
+    function activateTab(targetSelector, updateUrl = true) {
+        const targetPane = document.querySelector(targetSelector);
+        if (!targetPane) return;
+
+        tabButtons.forEach(btn => {
+            const isTarget = btn.getAttribute('data-bs-target') === targetSelector;
+            btn.classList.toggle('active', isTarget);
+            btn.setAttribute('aria-selected', isTarget ? 'true' : 'false');
+        });
+
+        tabPanes.forEach(pane => {
+            const isTarget = `#${pane.id}` === targetSelector;
+            pane.classList.toggle('active', isTarget);
+        });
+
+        if (updateUrl && window.location.hash !== targetSelector) {
+            try {
+                history.replaceState(null, '', targetSelector);
+            } catch (_) {
+                // Ignore history restriction on file:// or sandboxed frames
+            }
+        }
+    }
+
+    tabButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const target = btn.getAttribute('data-bs-target');
+            if (target) activateTab(target, true);
+        });
+    });
+
+    if (brandLink) {
+        brandLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            activateTab('#tab-webcam', true);
+        });
+    }
+
+    const initialHash = window.location.hash;
+    if (initialHash && document.querySelector(`#mainTab [data-bs-target="${initialHash}"]`)) {
+        activateTab(initialHash, false);
+    }
+}
 
 // Audio Synthesizer Initialization
 function initAudio() {
@@ -106,6 +178,9 @@ document.addEventListener('DOMContentLoaded', () => {
     processingCanvas = document.createElement('canvas');
     procCtx = processingCanvas.getContext('2d');
 
+    // Initialize tab navigation
+    setupTabNavigation();
+
     // Button event listeners
     const btnStartCam = document.getElementById('btn-start-cam');
     const btnStopCam = document.getElementById('btn-stop-cam');
@@ -130,15 +205,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Sound Toggle
     if (btnToggleSound) {
+        btnToggleSound.setAttribute('aria-pressed', 'true');
         btnToggleSound.addEventListener('click', () => {
             soundEnabled = !soundEnabled;
+            btnToggleSound.setAttribute('aria-pressed', soundEnabled ? 'true' : 'false');
             if (soundEnabled) {
-                btnToggleSound.innerHTML = '<i class="bi bi-volume-up-fill" id="sound-icon"></i> Alarm: ON';
-                btnToggleSound.className = 'btn btn-sm btn-outline-warning';
+                btnToggleSound.innerHTML = '<i class="bi bi-volume-up-fill" id="sound-icon" aria-hidden="true"></i><span>Alarm suara: ON</span>';
                 initAudio();
             } else {
-                btnToggleSound.innerHTML = '<i class="bi bi-volume-mute-fill" id="sound-icon"></i> Alarm: OFF';
-                btnToggleSound.className = 'btn btn-sm btn-outline-secondary';
+                btnToggleSound.innerHTML = '<i class="bi bi-volume-mute-fill" id="sound-icon" aria-hidden="true"></i><span>Alarm suara: OFF</span>';
             }
         });
     }
@@ -168,7 +243,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // Update Camera Mode UI Badges & Buttons
 function updateCameraLabels() {
     const isRear = currentFacingMode === 'environment';
-    const modeName = isRear ? 'Kamera Belakang' : 'Kamera Depan (Selfie)';
+    const modeName = isRear ? 'Kamera Belakang' : 'Kamera Depan';
     const nextModeName = isRear ? 'Kamera Depan' : 'Kamera Belakang';
 
     const textInit = document.getElementById('cam-mode-text-init');
@@ -180,7 +255,9 @@ function updateCameraLabels() {
     const badgeFacing = document.getElementById('cam-facing-badge');
     if (badgeFacing) {
         badgeFacing.innerText = isRear ? 'Belakang' : 'Depan';
-        badgeFacing.className = isRear ? 'badge bg-secondary font-monospace' : 'badge bg-info text-dark font-monospace';
+        badgeFacing.className = isRear
+            ? 'status-pill status-pill--stage'
+            : 'status-pill status-pill--stage-info';
     }
 }
 
@@ -222,6 +299,7 @@ async function startWebcam() {
 
         // UI State Updates
         document.getElementById('cam-placeholder').classList.add('d-none');
+        if (outputCanvas) outputCanvas.classList.remove('d-none');
         document.getElementById('btn-start-cam').classList.add('d-none');
         document.getElementById('btn-stop-cam').classList.remove('d-none');
         document.getElementById('btn-resume-cam').classList.add('d-none');
@@ -259,9 +337,10 @@ function stopWebcam() {
 
     activeDetections = [];
 
-    // Clear output canvas
+    // Clear output canvas and hide until camera starts again
     if (canvasCtx && outputCanvas) {
         canvasCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+        outputCanvas.classList.add('d-none');
     }
 
     // UI Updates
@@ -350,14 +429,14 @@ function drawActiveDetections(ctx, vw, vh) {
         const bh = y2 - y1;
         const color = det.color_hex || '#10b981';
 
-        // 1. Draw glowing Bounding Box
+        // 1. Draw Bounding Box
         ctx.strokeStyle = color;
         ctx.lineWidth = Math.max(3, Math.round(vw / 180));
         ctx.strokeRect(x1, y1, bw, bh);
 
         // 2. Draw Top Label Pill
         const labelText = `${det.title || det.label} (${det.confidence}%)`;
-        ctx.font = 'bold 13px "Plus Jakarta Sans", sans-serif';
+        ctx.font = '600 13px "Red Hat Text", sans-serif';
         const textWidth = ctx.measureText(labelText).width;
         const badgeH = 24;
         const badgeW = textWidth + 18;
@@ -449,7 +528,7 @@ async function sendInferenceFrame() {
                 if (res.has_violation) {
                     banner.classList.remove('d-none');
                     const vTypes = (res.violation_types || []).join(', ');
-                    document.getElementById('live-alert-text').innerText = `PERINGATAN: ${vTypes.toUpperCase()}`;
+                    document.getElementById('live-alert-text').innerText = `Peringatan: ${vTypes}`;
                     playHazardChime();
                 } else {
                     banner.classList.add('d-none');
@@ -506,8 +585,22 @@ function updateStatsDisplay(stats) {
 function setupUploadHandlers() {
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('image-file-input');
+    const btnChoose = document.getElementById('btn-choose-file');
 
     if (!dropZone || !fileInput) return;
+
+    if (btnChoose) {
+        btnChoose.addEventListener('click', (e) => {
+            e.stopPropagation();
+            fileInput.click();
+        });
+    }
+
+    dropZone.addEventListener('click', (e) => {
+        if (e.target !== btnChoose) {
+            fileInput.click();
+        }
+    });
 
     dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
@@ -540,8 +633,11 @@ async function handleImageUpload(file) {
 
     const resultWrapper = document.getElementById('image-result-wrapper');
     const summaryText = document.getElementById('detection-summary-text');
-    summaryText.innerText = 'Memproses citra dengan YOLO11 & Pipeline Pengolahan Citra...';
+    const btnChoose = document.getElementById('btn-choose-file');
+
+    summaryText.innerText = 'Memproses citra dengan YOLO11n dan pipeline pengolahan citra...';
     resultWrapper.classList.remove('d-none');
+    if (btnChoose) btnChoose.disabled = true;
 
     try {
         const resp = await fetch('/api/detect/image', {
@@ -557,7 +653,7 @@ async function handleImageUpload(file) {
         if (data.status === 'success') {
             document.getElementById('annotated-image-result').src = data.annotated_image;
             updateStatsDisplay(data.stats);
-            summaryText.innerText = `Terdeteksi: ${data.stats.total_workers} pekerja (${data.stats.compliant} Aman, ${data.stats.violations} Pelanggaran)`;
+            summaryText.innerText = `Terdeteksi: ${data.stats.total_workers} pekerja (${data.stats.compliant} aman, ${data.stats.violations} pelanggaran)`;
 
             // Render Deep Image Processing Step-by-Step Breakdown
             renderDIPBreakdown(data.detections);
@@ -566,7 +662,10 @@ async function handleImageUpload(file) {
             loadAuditLogs();
         }
     } catch (err) {
+        summaryText.innerText = 'Gagal memproses gambar. Periksa format file lalu coba lagi.';
         alert('Gagal memproses gambar: ' + err.message);
+    } finally {
+        if (btnChoose) btnChoose.disabled = false;
     }
 }
 
@@ -586,83 +685,73 @@ function renderDIPBreakdown(detections) {
     activeContent.innerHTML = '';
 
     detections.forEach((det, idx) => {
-        const d = det.diagnostics;
+        const d = det.diagnostics || {};
+        const pillClass = getStatusPillClass(det.label, det.color_hex, det.badge);
+        const hairRatio = det.hair_ratio !== undefined ? det.hair_ratio : 0;
+
         const cardHtml = `
-            <div class="card mb-3 bg-dark border border-secondary shadow-sm">
-                <div class="card-header bg-subtle py-2 d-flex justify-content-between align-items-center">
-                    <span class="badge" style="background-color: ${det.color_hex}">${det.badge}</span>
-                    <span class="fw-bold small text-light">Pekerja #${idx + 1}: ${det.title}</span>
-                    <span class="badge bg-secondary font-monospace">${det.confidence}%</span>
-                </div>
-                <div class="card-body p-3">
-                    <div class="row g-2 mb-3">
-                        <!-- Step 1: Original Crop -->
-                        <div class="col-6 col-sm-3">
-                            <div class="diag-card p-1 text-center">
-                                <img src="${d.original_crop}" class="diag-thumb rounded mb-1">
-                                <div class="small fw-semibold text-secondary" style="font-size:0.7rem">1. Crop Kepala</div>
-                            </div>
+            <article class="entry">
+                <header class="entry-head">
+                    <span class="entry-head-title">Pekerja #${idx + 1}: ${det.title}</span>
+                    <div class="entry-head-meta">
+                        <span class="status-pill ${pillClass}">${det.badge}</span>
+                        <span class="status-pill status-pill--stage num">${det.confidence}%</span>
+                    </div>
+                </header>
+                <div class="notebook">
+                    <div class="diag-steps-grid">
+                        <div class="diag-card">
+                            <img src="${d.original_crop || ''}" class="diag-thumb" width="120" height="96" alt="Potongan kepala pekerja ${idx + 1}">
+                            <div class="diag-caption">1. Crop Kepala</div>
                         </div>
-                        <!-- Step 2: CLAHE Enhancement (Slide P03) -->
-                        <div class="col-6 col-sm-3">
-                            <div class="diag-card p-1 text-center">
-                                <img src="${d.enhanced_roi}" class="diag-thumb rounded mb-1">
-                                <div class="small fw-semibold text-info" style="font-size:0.7rem">2. CLAHE (P03)</div>
-                            </div>
+                        <div class="diag-card">
+                            <img src="${d.enhanced_roi || ''}" class="diag-thumb" width="120" height="96" alt="Peningkatan kontras CLAHE pekerja ${idx + 1}">
+                            <div class="diag-caption">2. CLAHE (P03)</div>
                         </div>
-                        <!-- Step 3: Dome Mask (Slide P09) -->
-                        <div class="col-6 col-sm-3">
-                            <div class="diag-card p-1 text-center">
-                                <img src="${d.color_mask}" class="diag-thumb rounded mb-1">
-                                <div class="small fw-semibold text-warning" style="font-size:0.7rem">3. Mask Kubah (P09)</div>
-                            </div>
+                        <div class="diag-card">
+                            <img src="${d.color_mask || ''}" class="diag-thumb" width="120" height="96" alt="Masker kubah pekerja ${idx + 1}">
+                            <div class="diag-caption">3. Mask Kubah (P09)</div>
                         </div>
-                        <!-- Step 4: Canny Edge (Slide P07) -->
-                        <div class="col-6 col-sm-3">
-                            <div class="diag-card p-1 text-center">
-                                <img src="${d.canny_edges}" class="diag-thumb rounded mb-1">
-                                <div class="small fw-semibold text-danger" style="font-size:0.7rem">4. Tepi Canny (P07)</div>
-                            </div>
+                        <div class="diag-card">
+                            <img src="${d.canny_edges || ''}" class="diag-thumb" width="120" height="96" alt="Deteksi tepi Canny pekerja ${idx + 1}">
+                            <div class="diag-caption">4. Tepi Canny (P07)</div>
                         </div>
                     </div>
 
-                    <!-- Metrics Table from DIP Feature Extraction -->
-                    <div class="table-responsive">
-                        <table class="table table-sm table-dark table-bordered mb-0 small" style="font-size: 0.75rem;">
-                            <tbody>
-                                <tr>
-                                    <td class="text-secondary">Densitas Tepi Interior:</td>
-                                    <td class="fw-bold text-light">${det.edge_density}% ${det.edge_density < 20 ? '(Permukaan Halus Plastik)' : '(Tekstur Kain Berlipat)'}</td>
-                                </tr>
-                                <tr>
-                                    <td class="text-secondary">Rasio Lipatan Drapery:</td>
-                                    <td class="fw-bold text-light">${det.drapery_ratio} ${det.drapery_ratio > 1.25 ? '(Lipatan Vertikal Hijab/Kain)' : '(Bentuk Kubah Rigit)'}</td>
-                                </tr>
-                                <tr>
-                                    <td class="text-secondary">Simetri Geometri:</td>
-                                    <td class="fw-bold text-light">${det.symmetry_score} ${det.symmetry_score < 0.68 ? '(Asimetris Visor Topi)' : '(Simetris Melingkar)'}</td>
-                                </tr>
-                                <tr>
-                                    <td class="text-secondary">Bayangan Lidah Topi:</td>
-                                    <td class="fw-bold text-light">${det.visor_shadow}% ${det.visor_shadow > 16 ? '(Ciri Khas Topi Berlidah)' : '(Tanpa Bayangan Visor)'}</td>
-                                </tr>
-                                <tr>
-                                    <td class="text-secondary">Pori Ventilasi Sepeda:</td>
-                                    <td class="fw-bold text-light">${det.vent_count} celah ${det.vent_count >= 3 ? '(Helm Sepeda Aerodinamis)' : '(Kubah Padat K3)'}</td>
-                                </tr>
-                                <tr>
-                                    <td class="text-secondary">Kaca Visor Helm Motor:</td>
-                                    <td class="fw-bold text-light">${det.dark_visor_ratio}% ${det.dark_visor_ratio > 25 ? '(Kaca Visor Helm Motor)' : '(Wajah Terbuka)'}</td>
-                                </tr>
-                                <tr>
-                                    <td class="text-secondary">Rambut Asli (Ubun-Ubun):</td>
-                                    <td class="fw-bold text-light">${det.hair_ratio !== undefined ? det.hair_ratio : 0}% ${(det.hair_ratio >= 15) ? '(Rambut Terbuka / Tanpa Helm)' : '(Tertutup Pelindung)'}</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
+                    <table class="dip-metrics-table">
+                        <tbody>
+                            <tr>
+                                <td class="dip-metrics-label">Densitas Tepi Interior</td>
+                                <td class="dip-metrics-value"><span class="num">${det.edge_density}%</span> ${det.edge_density < 20 ? '(Permukaan Halus Plastik)' : '(Tekstur Kain Berlipat)'}</td>
+                            </tr>
+                            <tr>
+                                <td class="dip-metrics-label">Rasio Lipatan Drapery</td>
+                                <td class="dip-metrics-value"><span class="num">${det.drapery_ratio}</span> ${det.drapery_ratio > 1.25 ? '(Lipatan Vertikal Hijab/Kain)' : '(Bentuk Kubah Rigit)'}</td>
+                            </tr>
+                            <tr>
+                                <td class="dip-metrics-label">Simetri Geometri</td>
+                                <td class="dip-metrics-value"><span class="num">${det.symmetry_score}</span> ${det.symmetry_score < 0.68 ? '(Asimetris Visor Topi)' : '(Simetris Melingkar)'}</td>
+                            </tr>
+                            <tr>
+                                <td class="dip-metrics-label">Bayangan Lidah Topi</td>
+                                <td class="dip-metrics-value"><span class="num">${det.visor_shadow}%</span> ${det.visor_shadow > 16 ? '(Ciri Khas Topi Berlidah)' : '(Tanpa Bayangan Visor)'}</td>
+                            </tr>
+                            <tr>
+                                <td class="dip-metrics-label">Pori Ventilasi Sepeda</td>
+                                <td class="dip-metrics-value"><span class="num">${det.vent_count}</span> celah ${det.vent_count >= 3 ? '(Helm Sepeda Aerodinamis)' : '(Kubah Padat K3)'}</td>
+                            </tr>
+                            <tr>
+                                <td class="dip-metrics-label">Kaca Visor Helm Motor</td>
+                                <td class="dip-metrics-value"><span class="num">${det.dark_visor_ratio}%</span> ${det.dark_visor_ratio > 25 ? '(Kaca Visor Helm Motor)' : '(Wajah Terbuka)'}</td>
+                            </tr>
+                            <tr>
+                                <td class="dip-metrics-label">Rambut Asli (Ubun-Ubun)</td>
+                                <td class="dip-metrics-value"><span class="num">${hairRatio}%</span> ${hairRatio >= 15 ? '(Rambut Terbuka / Tanpa Helm)' : '(Tertutup Pelindung)'}</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
-            </div>
+            </article>
         `;
         activeContent.insertAdjacentHTML('beforeend', cardHtml);
     });
@@ -678,21 +767,22 @@ async function loadAuditLogs() {
             if (!tbody) return;
 
             if (!data.logs || data.logs.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-secondary">Belum ada catatan pelanggaran. Area proyek terpantau aman!</td></tr>`;
+                tbody.innerHTML = '<tr><td colspan="5" class="audit-empty-cell">Belum ada catatan pelanggaran. Area proyek terpantau aman.</td></tr>';
                 return;
             }
 
             tbody.innerHTML = '';
             data.logs.forEach(log => {
+                const pillClass = getStatusPillClass('', log.color_hex, log.badge);
                 const tr = `
                     <tr>
-                        <td class="font-monospace small px-3">${log.timestamp}</td>
-                        <td>
-                            <img src="${log.thumbnail}" class="rounded border border-secondary" style="width: 48px; height: 48px; object-fit: cover;">
+                        <td class="num" data-label="Waktu">${log.timestamp}</td>
+                        <td data-label="Bukti snapshot">
+                            <img src="${log.thumbnail}" class="audit-thumb" width="48" height="48" alt="Bukti pelanggaran ${log.violation_type}">
                         </td>
-                        <td class="fw-bold text-light">${log.violation_type}</td>
-                        <td><span class="badge" style="background-color: ${log.color_hex}">${log.badge}</span></td>
-                        <td class="small text-secondary">${log.details}</td>
+                        <td data-label="Jenis pelanggaran"><strong>${log.violation_type}</strong></td>
+                        <td data-label="Status K3"><span class="status-pill ${pillClass}">${log.badge}</span></td>
+                        <td data-label="Analisis fisik citra">${log.details}</td>
                     </tr>
                 `;
                 tbody.insertAdjacentHTML('beforeend', tr);
