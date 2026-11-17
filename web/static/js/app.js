@@ -308,12 +308,12 @@ async function startWebcam() {
 
         updateCameraLabels();
 
-        // Launch decoupled loops:
-        // 1. High-frequency 60 FPS Viewfinder Canvas Render Loop
-        if (renderRafId) cancelAnimationFrame(renderRafId);
-        renderRafId = requestAnimationFrame(renderCanvasLoop);
-
-        // 2. Async Lightweight Background AI Inference Loop
+        // AI-Synced Accuracy Mode: canvas hanya diperbarui saat hasil AI selesai
+        // agar bounding box 100% sinkron dengan frame & memaksimalkan kualitas citra.
+        if (renderRafId) {
+            cancelAnimationFrame(renderRafId);
+            renderRafId = null;
+        }
         sendInferenceFrame();
 
     } catch (err) {
@@ -460,24 +460,23 @@ function drawActiveDetections(ctx, vw, vh) {
 }
 
 // -------------------------------------------------------------
-// LOOP 2: Ultra-Fast Async AI Inference (~15KB per request)
+// LOOP: AI-Synced Frame Capture & High-Accuracy Inference
 // -------------------------------------------------------------
 async function sendInferenceFrame() {
     if (!isWebcamRunning) return;
     if (isProcessingFrame) return;
 
-    if (!videoElement || videoElement.readyState < 2) {
+    if (!videoElement || videoElement.readyState < 2 || !videoElement.videoWidth) {
         setTimeout(sendInferenceFrame, 60);
         return;
     }
 
     isProcessingFrame = true;
 
-    // Keep native YOLO inference resolution (up to 640px) & crisp JPEG quality
-    // so fine headwear features (vents, visor edges, hijab folds) are preserved
+    // Prioritaskan ketajaman citra (hingga 720px, JPEG 0.90) untuk akurasi YOLO + OpenCV maksimal
     const srcW = videoElement.videoWidth || 640;
     const srcH = videoElement.videoHeight || 480;
-    const targetW = Math.min(640, srcW);
+    const targetW = Math.min(720, srcW);
     const aspect = srcH / srcW;
     const targetH = Math.round(targetW * aspect);
 
@@ -486,9 +485,9 @@ async function sendInferenceFrame() {
         processingCanvas.height = targetH;
     }
 
-    // Capture crisp frame for accurate OpenCV + YOLO analysis
+    // Tangkap frame yang persis akan dianalisis oleh AI
     procCtx.drawImage(videoElement, 0, 0, targetW, targetH);
-    const dataUrl = processingCanvas.toDataURL('image/jpeg', 0.80);
+    const dataUrl = processingCanvas.toDataURL('image/jpeg', 0.90);
 
     try {
         const resp = await fetch('/api/detect/frame', {
@@ -497,19 +496,33 @@ async function sendInferenceFrame() {
             body: JSON.stringify({
                 image: dataUrl,
                 conf: 0.35,
-                send_annotated: false // Saves ~80KB response payload per frame!
+                send_annotated: false
             })
         });
 
         if (resp.ok) {
             const res = await resp.json();
-            if (res.status === 'success') {
+            if (res.status === 'success' && isWebcamRunning) {
                 const fW = res.frame_size ? res.frame_size[0] : targetW;
                 const fH = res.frame_size ? res.frame_size[1] : targetH;
-                const scaleX = (outputCanvas.width || targetW) / fW;
-                const scaleY = (outputCanvas.height || targetH) / fH;
 
-                // Scale bounding boxes accurately to current canvas viewport
+                if (outputCanvas.width !== targetW || outputCanvas.height !== targetH) {
+                    outputCanvas.width = targetW;
+                    outputCanvas.height = targetH;
+                }
+
+                const scaleX = targetW / fW;
+                const scaleY = targetH / fH;
+
+                // Gambar frame yang persis dianalisis ke outputCanvas (sinkron 100% dengan bbox)
+                canvasCtx.save();
+                if (currentFacingMode === 'user') {
+                    canvasCtx.translate(targetW, 0);
+                    canvasCtx.scale(-1, 1);
+                }
+                canvasCtx.drawImage(processingCanvas, 0, 0, targetW, targetH);
+                canvasCtx.restore();
+
                 activeDetections = (res.detections || []).map(d => {
                     const [bx1, by1, bx2, by2] = d.bbox;
                     return {
@@ -524,6 +537,7 @@ async function sendInferenceFrame() {
                 });
 
                 lastDetectionTime = performance.now();
+                drawActiveDetections(canvasCtx, targetW, targetH);
                 updateStatsDisplay(res.stats);
 
                 // Hazard Alert Check
@@ -537,14 +551,15 @@ async function sendInferenceFrame() {
                     banner.classList.add('d-none');
                 }
 
+                displayFrameCount++;
                 aiFrameCount++;
+                updateFpsDisplay();
             }
         }
     } catch (err) {
         console.warn('Inference error:', err);
     } finally {
         isProcessingFrame = false;
-        // Schedule next AI frame with minimal delay
         if (isWebcamRunning) {
             requestAnimationFrame(sendInferenceFrame);
         }
