@@ -39,6 +39,8 @@ let aiFps = 0;
 let displayFrameCount = 0;
 let aiFrameCount = 0;
 let lastFpsUpdateTime = performance.now();
+let useBrowserAI = true;
+let aiModeLabel = 'browser';
 
 // Map K3 label or color_hex to Open Design semantic status pill class
 function getStatusPillClass(label, colorHex, badge) {
@@ -308,6 +310,24 @@ async function startWebcam() {
 
         updateCameraLabels();
 
+        // Muat model ONNX di browser sekali saja (fallback otomatis ke server jika gagal)
+        const fpsEl = document.getElementById('cam-fps');
+        if (typeof BrowserYOLO !== 'undefined') {
+            if (fpsEl) fpsEl.innerText = 'Memuat AI Browser...';
+            try {
+                await BrowserYOLO.init();
+                useBrowserAI = true;
+                aiModeLabel = BrowserYOLO.getProvider();
+            } catch (e) {
+                console.warn('Fallback ke server AI:', e);
+                useBrowserAI = false;
+                aiModeLabel = 'server';
+            }
+        } else {
+            useBrowserAI = false;
+            aiModeLabel = 'server';
+        }
+
         // AI-Synced Accuracy Mode: canvas hanya diperbarui saat hasil AI selesai
         // agar bounding box 100% sinkron dengan frame & memaksimalkan kualitas citra.
         if (renderRafId) {
@@ -487,22 +507,29 @@ async function sendInferenceFrame() {
 
     // Tangkap frame yang persis akan dianalisis oleh AI
     procCtx.drawImage(videoElement, 0, 0, targetW, targetH);
-    const dataUrl = processingCanvas.toDataURL('image/jpeg', 0.90);
 
     try {
-        const resp = await fetch('/api/detect/frame', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                image: dataUrl,
-                conf: 0.35,
-                send_annotated: false
-            })
-        });
+        let res = null;
+        if (useBrowserAI && typeof BrowserYOLO !== 'undefined') {
+            res = await BrowserYOLO.detect(processingCanvas, 0.35);
+            aiModeLabel = res.provider || 'browser';
+        } else {
+            const dataUrl = processingCanvas.toDataURL('image/jpeg', 0.90);
+            const resp = await fetch('/api/detect/frame', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    image: dataUrl,
+                    conf: 0.35,
+                    send_annotated: false
+                })
+            });
+            if (resp.ok) {
+                res = await resp.json();
+            }
+        }
 
-        if (resp.ok) {
-            const res = await resp.json();
-            if (res.status === 'success' && isWebcamRunning) {
+        if (res && res.status === 'success' && isWebcamRunning) {
                 const fW = res.frame_size ? res.frame_size[0] : targetW;
                 const fH = res.frame_size ? res.frame_size[1] : targetH;
 
@@ -554,7 +581,6 @@ async function sendInferenceFrame() {
                 displayFrameCount++;
                 aiFrameCount++;
                 updateFpsDisplay();
-            }
         }
     } catch (err) {
         console.warn('Inference error:', err);
@@ -578,7 +604,7 @@ function updateFpsDisplay() {
 
         const fpsEl = document.getElementById('cam-fps');
         if (fpsEl) {
-            fpsEl.innerText = `${displayFps} FPS (AI: ${aiFps}/s)`;
+            fpsEl.innerText = `${displayFps} FPS (AI: ${aiFps}/s • ${aiModeLabel})`;
         }
     }
 }
