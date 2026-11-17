@@ -310,33 +310,15 @@ async function startWebcam() {
 
         updateCameraLabels();
 
-        // Gunakan Browser ONNX hanya di desktop dengan WebGPU agar HP tidak ngelag/freeze
-        const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
-        const canUseFastWebGPU = !isMobile && !!navigator.gpu && typeof BrowserYOLO !== 'undefined';
-        const fpsEl = document.getElementById('cam-fps');
+        // Gunakan server AI agar HP/desktop tetap ringan dan lancar
+        useBrowserAI = false;
+        aiModeLabel = 'server';
 
-        if (canUseFastWebGPU) {
-            if (fpsEl) fpsEl.innerText = 'Memuat AI WebGPU...';
-            try {
-                await BrowserYOLO.init();
-                useBrowserAI = (BrowserYOLO.getProvider() === 'webgpu');
-                aiModeLabel = useBrowserAI ? 'webgpu' : 'server';
-            } catch (e) {
-                console.warn('Fallback ke server AI:', e);
-                useBrowserAI = false;
-                aiModeLabel = 'server';
-            }
-        } else {
-            useBrowserAI = false;
-            aiModeLabel = 'server';
-        }
+        // 1. High-frequency 30-60 FPS Viewfinder Canvas Render Loop
+        if (renderRafId) cancelAnimationFrame(renderRafId);
+        renderRafId = requestAnimationFrame(renderCanvasLoop);
 
-        // AI-Synced Accuracy Mode: canvas hanya diperbarui saat hasil AI selesai
-        // agar bounding box 100% sinkron dengan frame & memaksimalkan kualitas citra.
-        if (renderRafId) {
-            cancelAnimationFrame(renderRafId);
-            renderRafId = null;
-        }
+        // 2. Async High-Accuracy Server AI Inference Loop
         sendInferenceFrame();
 
     } catch (err) {
@@ -483,7 +465,7 @@ function drawActiveDetections(ctx, vw, vh) {
 }
 
 // -------------------------------------------------------------
-// LOOP: AI-Synced Frame Capture & High-Accuracy Inference
+// LOOP 2: Async High-Accuracy Server AI Inference (640px, JPEG 0.80)
 // -------------------------------------------------------------
 async function sendInferenceFrame() {
     if (!isWebcamRunning) return;
@@ -496,10 +478,10 @@ async function sendInferenceFrame() {
 
     isProcessingFrame = true;
 
-    // Prioritaskan ketajaman citra (hingga 720px, JPEG 0.90) untuk akurasi YOLO + OpenCV maksimal
+    // Kirim resolusi native YOLO (hingga 640px) & kualitas JPEG 0.80 agar fitur detail tetap tajam
     const srcW = videoElement.videoWidth || 640;
     const srcH = videoElement.videoHeight || 480;
-    const targetW = Math.min(720, srcW);
+    const targetW = Math.min(640, srcW);
     const aspect = srcH / srcW;
     const targetH = Math.round(targetW * aspect);
 
@@ -508,50 +490,27 @@ async function sendInferenceFrame() {
         processingCanvas.height = targetH;
     }
 
-    // Tangkap frame yang persis akan dianalisis oleh AI
     procCtx.drawImage(videoElement, 0, 0, targetW, targetH);
+    const dataUrl = processingCanvas.toDataURL('image/jpeg', 0.80);
 
     try {
-        let res = null;
-        if (useBrowserAI && typeof BrowserYOLO !== 'undefined') {
-            res = await BrowserYOLO.detect(processingCanvas, 0.35);
-            aiModeLabel = res.provider || 'browser';
-        } else {
-            const dataUrl = processingCanvas.toDataURL('image/jpeg', 0.82);
-            const resp = await fetch('/api/detect/frame', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    image: dataUrl,
-                    conf: 0.35,
-                    send_annotated: false
-                })
-            });
-            if (resp.ok) {
-                res = await resp.json();
-            }
-        }
+        const resp = await fetch('/api/detect/frame', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                image: dataUrl,
+                conf: 0.35,
+                send_annotated: false
+            })
+        });
 
-        if (res && res.status === 'success' && isWebcamRunning) {
+        if (resp.ok) {
+            const res = await resp.json();
+            if (res.status === 'success' && isWebcamRunning) {
                 const fW = res.frame_size ? res.frame_size[0] : targetW;
                 const fH = res.frame_size ? res.frame_size[1] : targetH;
-
-                if (outputCanvas.width !== targetW || outputCanvas.height !== targetH) {
-                    outputCanvas.width = targetW;
-                    outputCanvas.height = targetH;
-                }
-
-                const scaleX = targetW / fW;
-                const scaleY = targetH / fH;
-
-                // Gambar frame yang persis dianalisis ke outputCanvas (sinkron 100% dengan bbox)
-                canvasCtx.save();
-                if (currentFacingMode === 'user') {
-                    canvasCtx.translate(targetW, 0);
-                    canvasCtx.scale(-1, 1);
-                }
-                canvasCtx.drawImage(processingCanvas, 0, 0, targetW, targetH);
-                canvasCtx.restore();
+                const scaleX = (outputCanvas.width || targetW) / fW;
+                const scaleY = (outputCanvas.height || targetH) / fH;
 
                 activeDetections = (res.detections || []).map(d => {
                     const [bx1, by1, bx2, by2] = d.bbox;
@@ -567,7 +526,6 @@ async function sendInferenceFrame() {
                 });
 
                 lastDetectionTime = performance.now();
-                drawActiveDetections(canvasCtx, targetW, targetH);
                 updateStatsDisplay(res.stats);
 
                 // Hazard Alert Check
@@ -581,9 +539,8 @@ async function sendInferenceFrame() {
                     banner.classList.add('d-none');
                 }
 
-                displayFrameCount++;
                 aiFrameCount++;
-                updateFpsDisplay();
+            }
         }
     } catch (err) {
         console.warn('Inference error:', err);
