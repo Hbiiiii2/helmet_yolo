@@ -310,14 +310,17 @@ async function startWebcam() {
 
         updateCameraLabels();
 
-        // Muat model ONNX di browser sekali saja (fallback otomatis ke server jika gagal)
+        // Gunakan Browser ONNX hanya di desktop dengan WebGPU agar HP tidak ngelag/freeze
+        const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+        const canUseFastWebGPU = !isMobile && !!navigator.gpu && typeof BrowserYOLO !== 'undefined';
         const fpsEl = document.getElementById('cam-fps');
-        if (typeof BrowserYOLO !== 'undefined') {
-            if (fpsEl) fpsEl.innerText = 'Memuat AI Browser...';
+
+        if (canUseFastWebGPU) {
+            if (fpsEl) fpsEl.innerText = 'Memuat AI WebGPU...';
             try {
                 await BrowserYOLO.init();
-                useBrowserAI = true;
-                aiModeLabel = BrowserYOLO.getProvider();
+                useBrowserAI = (BrowserYOLO.getProvider() === 'webgpu');
+                aiModeLabel = useBrowserAI ? 'webgpu' : 'server';
             } catch (e) {
                 console.warn('Fallback ke server AI:', e);
                 useBrowserAI = false;
@@ -514,7 +517,7 @@ async function sendInferenceFrame() {
             res = await BrowserYOLO.detect(processingCanvas, 0.35);
             aiModeLabel = res.provider || 'browser';
         } else {
-            const dataUrl = processingCanvas.toDataURL('image/jpeg', 0.90);
+            const dataUrl = processingCanvas.toDataURL('image/jpeg', 0.82);
             const resp = await fetch('/api/detect/frame', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
