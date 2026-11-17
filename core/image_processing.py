@@ -142,19 +142,23 @@ class ImageProcessingPipeline:
         - Hue Diversity: Topi bercorak/camo memiliki variansi hue tinggi.
         """
         h, w = bgr_roi.shape[:2]
+        # Fokus pada zona tengah (15%-85% lebar) agar noise background di sudut box tidak ikut terhitung
+        x1, x2 = max(0, int(w * 0.15)), min(w, int(w * 0.85))
+        center_bgr = bgr_roi[:, x1:x2] if (x2 - x1) > 4 else bgr_roi
+        center_hsv = hsv_roi[:, x1:x2] if (x2 - x1) > 4 else hsv_roi
         
         # 1. Kontras Bayangan Visor (Kecerahan atas vs bawah topi)
-        v_upper = float(np.mean(hsv_roi[:max(2, int(h * 0.40)), :, 2]))
-        v_lower = float(np.mean(hsv_roi[int(h * 0.60):, :, 2]))
+        v_upper = float(np.mean(center_hsv[:max(2, int(h * 0.40)), :, 2]))
+        v_lower = float(np.mean(center_hsv[int(h * 0.60):, :, 2]))
         visor_shadow = max(0.0, (v_upper - v_lower) / max(1.0, v_upper + v_lower))
 
         # 2. Warmth / Khaki Score: Selisih R - B
-        B, _, R = cv2.split(bgr_roi.astype(float))
+        B, _, R = cv2.split(center_bgr.astype(float))
         r_minus_b = float(np.mean(R - B))
         is_khaki_tone = r_minus_b > 25.0
 
         # 3. Variansi Hue (Kain corak / camo)
-        h_std = float(np.std(hsv_roi[:int(h * 0.60), :, 0]))
+        h_std = float(np.std(center_hsv[:int(h * 0.60), :, 0]))
 
         # 4. Deteksi Lengkungan Visor di area bawah (bottom 40%)
         lower_gray = cv2.cvtColor(bgr_roi[int(h * 0.50):, :], cv2.COLOR_BGR2GRAY)
@@ -310,18 +314,24 @@ class ImageProcessingPipeline:
         cy1, cy2 = int(0.05 * h), int(0.50 * h)
         cx1, cx2 = int(0.25 * w), int(0.75 * w)
         c_hsv = hsv_roi[cy1:cy2, cx1:cx2]
-        if c_hsv.size == 0:
+        c_bgr = bgr_roi[cy1:cy2, cx1:cx2]
+        if c_hsv.size == 0 or c_bgr.size == 0:
             return 0.0, 0.0
 
         v = c_hsv[:, :, 2]
         s = c_hsv[:, :, 1]
-        # Rambut gelap khas Indonesia: V < 75 atau (V < 95 dan S < 80)
-        dark_hair = (v < 75) | ((v < 95) & (s < 80))
+        # Rambut gelap khas Indonesia (pakai HSV yang sudah dinormalisasi CLAHE agar backlight helm tidak dikira rambut)
+        dark_hair = (v < 70) | ((v < 90) & (s < 75))
         hair_ratio = float(np.count_nonzero(dark_hair) / dark_hair.size)
 
-        # Kulit dahi/kepala: H <= 25, S in [35, 180], V in [80, 240]
+        # Deteksi kulit gabungan HSV + YCrCb agar lebih tahan backlight & tidak mudah tertukar warna tembok/kain
         h_chan = c_hsv[:, :, 0]
-        skin = (h_chan <= 25) & (s >= 35) & (s <= 180) & (v >= 80) & (v <= 240)
+        ycrcb = cv2.cvtColor(c_bgr, cv2.COLOR_BGR2YCrCb)
+        cr = ycrcb[:, :, 1]
+        cb = ycrcb[:, :, 2]
+        skin_hsv = (h_chan <= 25) & (s >= 30) & (s <= 185) & (v >= 55) & (v <= 245)
+        skin_ycrcb = (cr >= 133) & (cr <= 173) & (cb >= 77) & (cb <= 127)
+        skin = skin_hsv & skin_ycrcb
         skin_ratio = float(np.count_nonzero(skin) / skin.size)
 
         return hair_ratio, skin_ratio
@@ -473,8 +483,8 @@ class ImageProcessingPipeline:
         # 2. Segmentasi Model Warna K3 pada Kubah Atas (Slide P04)
         color_mask, best_color, k3_ratio, color_scores = self.extract_k3_color_mask(roi_bgr, hsv_roi)
 
-        # 3. Deteksi Kehadiran Rambut Asli pada Kubah Tengah (Slide P04 & P09)
-        hair_ratio, skin_ratio = self.detect_cranial_hair(roi_bgr, raw_hsv_roi)
+        # 3. Deteksi Kehadiran Rambut Asli pada Kubah Tengah (pakai enhanced_roi agar tahan backlight)
+        hair_ratio, skin_ratio = self.detect_cranial_hair(enhanced_roi, hsv_roi)
 
         # 4. Deteksi Kontinuitas Hijab dari Kepala ke Leher (Slide P04 & P09)
         hijab_data = self.detect_hijab_and_neck_continuity(roi_bgr, person_crop, neck_roi=neck_roi)
@@ -485,8 +495,8 @@ class ImageProcessingPipeline:
         # 6. Analisis Ciri Topi Kasual (Slide P07: Lidah Visor & Bayangan)
         cap_feats = self.detect_visor_and_cap_features(enhanced_roi, hsv_roi)
 
-        # 7. Analisis Ciri Helm Motor (Slide P04 & P09: pakai roi_bgr asli agar visor gelap tidak tercuci CLAHE)
-        motor_feats = self.detect_motorcycle_helmet_features(roi_bgr, raw_hsv_roi)
+        # 7. Analisis Ciri Helm Motor (pakai enhanced_roi agar tahan backlight / bayangan gelap)
+        motor_feats = self.detect_motorcycle_helmet_features(enhanced_roi, hsv_roi)
 
         # 8. Analisis Tepi Interior & Drapery Kain (Slide P02 & P07)
         edge_metrics = self.analyze_edges_and_texture(gray_roi)

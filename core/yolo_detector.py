@@ -53,7 +53,17 @@ class SafetyHelmetDetector:
             return {"annotated_frame": frame, "detections": [], "stats": {}}
 
         orig_h, orig_w = frame.shape[:2]
-        results = self.model(frame, conf=conf, iou=iou, agnostic_nms=True, verbose=False)
+        # Normalisasi pencahayaan (CLAHE) sebelum YOLO saat kondisi backlight / gelap
+        # agar fitur wajah & helm tetap jelas tanpa mengubah frame anotasi asli
+        gray_check = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        mean_lum = float(np.mean(gray_check))
+        dark_ratio = float(np.count_nonzero(gray_check < 70) / max(1, gray_check.size))
+        infer_frame = (
+            self.classifier.ip_pipeline.enhance_image(frame)
+            if (mean_lum < 115 or dark_ratio > 0.30)
+            else frame
+        )
+        results = self.model(infer_frame, conf=conf, iou=iou, agnostic_nms=True, verbose=False)
         
         boxes_data = results[0].boxes
         detections = []
@@ -103,12 +113,11 @@ class SafetyHelmetDetector:
             hcy = (hy1 + hy2) / 2.0
             head_crop = frame[hy1:hy2, hx1:hx2]
 
-            # Ekstrak neck_roi langsung di bawah head bbox agar konteks leher/bahu
-            # selalu akurat (baik kamera dekat maupun jarak jauh)
+            # Ekstrak neck_roi tepat di bawah dagu/leher (hindari background kiri/kanan)
             ny1 = max(0, hy2 - int(hh * 0.08))
             ny2 = min(orig_h, hy2 + int(hh * 0.85))
-            nx1 = max(0, hx1 - int(hw * 0.15))
-            nx2 = min(orig_w, hx2 + int(hw * 0.15))
+            nx1 = max(0, hx1 + int(hw * 0.15))
+            nx2 = min(orig_w, hx2 - int(hw * 0.15))
             neck_crop = frame[ny1:ny2, nx1:nx2] if (ny2 - ny1) >= 8 and (nx2 - nx1) >= 8 else None
 
             # Cari person pembungkus untuk context leher/bahu (toleransi margin 15%)
