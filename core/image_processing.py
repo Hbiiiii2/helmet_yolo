@@ -76,11 +76,14 @@ class ImageProcessingPipeline:
         Slide P07 & P09: Deteksi Pori-Pori Ventilasi Aerodinamis (Ciri Khas Helm Sepeda).
         Helm sepeda memiliki 3 s.d. 15 lubang ventilasi memanjang pada kubah atas
         di mana bagian dalam lubang tampak gelap (rambut/bayangan interior).
+        Menggunakan kombinasi Canny + Morphological Black-Hat agar tetap akurat
+        pada resolusi kecil maupun helm berwarna gelap.
         """
         h, w = gray_roi.shape[:2]
-        upper_h = max(5, int(h * 0.55))
-        upper_dome = gray_roi[:upper_h, :]
-        upper_hsv = hsv_roi[:upper_h, :]
+        upper_h = max(6, int(h * 0.55))
+        x_pad = max(0, int(w * 0.08))
+        upper_dome = gray_roi[:upper_h, x_pad:w - x_pad] if (w - 2 * x_pad) > 6 else gray_roi[:upper_h, :]
+        upper_hsv = hsv_roi[:upper_h, x_pad:w - x_pad] if (w - 2 * x_pad) > 6 else hsv_roi[:upper_h, :]
         if upper_dome.size < 50:
             return 0, 0.0
 
@@ -88,21 +91,41 @@ class ImageProcessingPipeline:
         edges = cv2.Canny(blurred, 40, 120)
         edge_density = cv2.countNonZero(edges) / max(1, upper_dome.size)
 
-        contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-        vent_count = 0
-        min_vent_area = max(20, int(upper_dome.size * 0.01))
+        min_vent_area = max(12, int(upper_dome.size * 0.006))
         max_vent_area = int(upper_dome.size * 0.15)
         dome_v_mean = float(np.mean(upper_hsv[:, :, 2]))
 
-        for c in contours:
+        # 1. Deteksi lubang gelap lokal dengan Morphological Black-Hat
+        bh_ksize = max(5, (min(upper_dome.shape[:2]) // 6) | 1)
+        bh_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (bh_ksize, bh_ksize))
+        blackhat = cv2.morphologyEx(blurred, cv2.MORPH_BLACKHAT, bh_kernel)
+        _, bh_thresh = cv2.threshold(blackhat, 28, 255, cv2.THRESH_BINARY)
+        bh_thresh = cv2.morphologyEx(bh_thresh, cv2.MORPH_OPEN, self.kernel_open)
+
+        bh_contours, _ = cv2.findContours(bh_thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        vent_count = 0
+        for c in bh_contours:
             area = cv2.contourArea(c)
-            if min_vent_area < area < max_vent_area:
+            if min_vent_area <= area <= max_vent_area:
                 mask = np.zeros(upper_dome.shape, dtype=np.uint8)
                 cv2.drawContours(mask, [c], -1, 255, -1)
                 vent_v = cv2.mean(upper_hsv[:, :, 2], mask=mask)[0]
-                # Pori ventilasi sepeda asli adalah celah berongga yang gelap di dalamnya
-                if vent_v < (dome_v_mean * 0.65) and vent_v < 85:
+                if vent_v < (dome_v_mean * 0.68) and vent_v < 80:
                     vent_count += 1
+
+        # 2. Fallback: kontur tepi Canny jika Black-Hat belum menangkap semua pori
+        if vent_count < 2:
+            canny_contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+            canny_vents = 0
+            for c in canny_contours:
+                area = cv2.contourArea(c)
+                if min_vent_area <= area <= max_vent_area:
+                    mask = np.zeros(upper_dome.shape, dtype=np.uint8)
+                    cv2.drawContours(mask, [c], -1, 255, -1)
+                    vent_v = cv2.mean(upper_hsv[:, :, 2], mask=mask)[0]
+                    if vent_v < (dome_v_mean * 0.70) and vent_v < 85:
+                        canny_vents += 1
+            vent_count = max(vent_count, canny_vents)
 
         return vent_count, float(edge_density)
 
@@ -144,32 +167,52 @@ class ImageProcessingPipeline:
     def detect_motorcycle_helmet_features(self, bgr_roi: np.ndarray, hsv_roi: np.ndarray) -> Dict[str, float]:
         """
         Slide P04 & P09: Deteksi Ciri Khas Helm Motor:
-        1. Kaca Visor (Face Shield): Bagian tengah mata/wajah ditutupi kaca gelap (V < 45)
-           atau pantulan kaca mengilap melintang horizontal.
-        2. Cangkang Bulky & Tebal: Melingkupi kepala hingga menutupi telinga dan rahang.
+        1. Kaca Visor (Face Shield): Bagian tengah mata/wajah ditutupi kaca gelap (V < 55)
+           atau garis batas visor horizontal yang tegas (termasuk visor bening).
+        2. Cangkang Bulky & Tebal: Menutupi area samping telinga & rahang (kulit telinga/pipi minim).
         """
         h, w = bgr_roi.shape[:2]
         gray = cv2.cvtColor(bgr_roi, cv2.COLOR_BGR2GRAY)
 
-        mid_y1 = int(h * 0.40)
-        mid_y2 = int(h * 0.80)
+        mid_y1 = int(h * 0.35)
+        mid_y2 = int(h * 0.78)
         mid_x1 = int(w * 0.15)
         mid_x2 = int(w * 0.85)
 
         mid_zone = gray[mid_y1:mid_y2, mid_x1:mid_x2]
         dark_visor_ratio = 0.0
         visor_horizontal_edge = 0.0
+        visor_band_ratio = 1.0
 
         if mid_zone.size > 20:
             dark_pixels = np.count_nonzero(mid_zone < 45)
             dark_visor_ratio = dark_pixels / mid_zone.size
 
+            sobel_x = cv2.Sobel(mid_zone, cv2.CV_32F, 1, 0, ksize=3)
             sobel_y = cv2.Sobel(mid_zone, cv2.CV_32F, 0, 1, ksize=3)
-            visor_horizontal_edge = float(np.mean(np.abs(sobel_y)))
+            mean_y = float(np.mean(np.abs(sobel_y)))
+            mean_x = float(np.mean(np.abs(sobel_x)))
+            visor_horizontal_edge = mean_y
+            visor_band_ratio = float(mean_y / (mean_x + 1e-5))
+
+        # Cek kulit di area samping telinga/rahang (x: 0-20% dan 80-100%, y: 40-80%)
+        ear_y1, ear_y2 = int(h * 0.40), int(h * 0.80)
+        left_ear = hsv_roi[ear_y1:ear_y2, :max(1, int(w * 0.20))]
+        right_ear = hsv_roi[ear_y1:ear_y2, min(w - 1, int(w * 0.80)):]
+        ear_pixels = 0
+        ear_skin = 0
+        for side in (left_ear, right_ear):
+            if side.size > 0:
+                s_mask = (side[:, :, 0] <= 25) & (side[:, :, 1] >= 35) & (side[:, :, 1] <= 180) & (side[:, :, 2] >= 80) & (side[:, :, 2] <= 240)
+                ear_skin += int(np.count_nonzero(s_mask))
+                ear_pixels += int(s_mask.size)
+        ear_skin_ratio = float(ear_skin / max(1, ear_pixels))
 
         return {
             "dark_visor_ratio": float(dark_visor_ratio),
             "visor_horizontal_edge": float(visor_horizontal_edge),
+            "visor_band_ratio": float(visor_band_ratio),
+            "ear_skin_ratio": float(ear_skin_ratio),
             "aspect_ratio": float(h / max(1, w))
         }
 
@@ -281,21 +324,18 @@ class ImageProcessingPipeline:
     def detect_hijab_and_neck_continuity(
         self,
         head_roi: np.ndarray,
-        person_crop: np.ndarray = None
+        person_crop: np.ndarray = None,
+        neck_roi: np.ndarray = None
     ) -> Dict[str, Any]:
         """
         Slide P04, P07 & P09: Analisis Kontinuitas Kain Kerudung / Hijab dari Kepala ke Leher.
         Pada kerudung/hijab:
-        1. Kain penutup kepala memanjang ke bawah menutupi telinga, pipi, dan leher.
-        2. Area leher (di bawah dagu, di atas dada) memiliki warna kain yang identik
-           dengan warna kain penutup kepala (h_diff < 20, s_diff < 45, v_diff < 50).
+        1. Kain penutup kepala memanjang ke samping (menutupi telinga/pipi) dan ke bawah (leher).
+        2. Area samping kepala dan area leher memiliki warna kain yang konsisten dengan kubah kepala
+           (termasuk kain gelap/hitam atau putih/abu-abu yang saturasi/luminansinya seragam).
         3. Area leher tidak memperlihatkan kulit leher terbuka (neck_skin_ratio < 0.25).
-        Sebaliknya, pada helm proyek asli K3:
-        1. Tempurung helm kaku berakhir di atas dahi/telinga.
-        2. Leher pekerja adalah kulit manusia terbuka atau kerah kemeja/rompi yang warnanya
-           berbeda drastis dari tempurung helm di atas kepala.
         """
-        if head_roi is None or head_roi.size == 0 or person_crop is None or person_crop.size == 0:
+        if head_roi is None or head_roi.size == 0:
             return {
                 "is_hijab": False,
                 "neck_skin_ratio": 1.0,
@@ -303,22 +343,41 @@ class ImageProcessingPipeline:
                 "neck_drapery": 1.0
             }
 
-        ph, pw = person_crop.shape[:2]
         hh, hw = head_roi.shape[:2]
 
-        # 1. Warna rata-rata kubah penutup kepala
-        crown = head_roi[:max(4, int(hh * 0.60)), :]
+        # 1. Warna rata-rata kubah penutup kepala (crown tengah atas)
+        crown = head_roi[max(0, int(hh * 0.05)):max(4, int(hh * 0.45)), max(0, int(hw * 0.20)):min(hw, int(hw * 0.80))]
+        if crown.size == 0:
+            crown = head_roi[:max(4, int(hh * 0.50)), :]
         crown_hsv = cv2.cvtColor(crown, cv2.COLOR_BGR2HSV)
         head_mean = np.mean(crown_hsv, axis=(0, 1))
 
-        # 2. Zona leher (di bawah dagu, di atas dada: 48% s.d. 72% tinggi orang)
-        neck_y1 = int(0.48 * ph)
-        neck_y2 = int(0.72 * ph)
-        neck_x1 = int(0.20 * pw)
-        neck_x2 = int(0.80 * pw)
-        neck = person_crop[neck_y1:neck_y2, neck_x1:neck_x2]
+        # 1b. Kontinuitas warna kubah ke sisi samping kepala (telinga/pipi)
+        side_y1, side_y2 = int(hh * 0.35), int(hh * 0.85)
+        left_side = head_roi[side_y1:side_y2, :max(2, int(hw * 0.22))]
+        right_side = head_roi[side_y1:side_y2, min(hw - 2, int(hw * 0.78)):]
+        side_patches = [p for p in (left_side, right_side) if p.size > 0]
+        side_continuity = False
+        if side_patches:
+            side_cat = np.concatenate([cv2.cvtColor(p, cv2.COLOR_BGR2HSV).reshape(-1, 3) for p in side_patches], axis=0)
+            side_mean = np.mean(side_cat, axis=0)
+            sh_diff = float(min(abs(head_mean[0] - side_mean[0]), 180 - abs(head_mean[0] - side_mean[0])))
+            ss_diff = float(abs(head_mean[1] - side_mean[1]))
+            sv_diff = float(abs(head_mean[2] - side_mean[2]))
+            both_achromatic = (head_mean[1] < 55 and side_mean[1] < 55) or (head_mean[2] < 70 and side_mean[2] < 70)
+            side_continuity = (sv_diff < 55.0 and ss_diff < 55.0) if both_achromatic else (sh_diff < 22.0 and ss_diff < 50.0 and sv_diff < 55.0)
 
-        if neck.size == 0:
+        # 2. Zona leher: utamakan neck_roi (tepat di bawah head_bbox), fallback ke zona leher person_crop (28%-50%)
+        neck = neck_roi
+        if (neck is None or neck.size == 0) and person_crop is not None and person_crop.size > 0:
+            ph, pw = person_crop.shape[:2]
+            neck_y1 = int(0.28 * ph)
+            neck_y2 = int(0.50 * ph)
+            neck_x1 = int(0.20 * pw)
+            neck_x2 = int(0.80 * pw)
+            neck = person_crop[neck_y1:neck_y2, neck_x1:neck_x2]
+
+        if neck is None or neck.size == 0:
             return {
                 "is_hijab": False,
                 "neck_skin_ratio": 1.0,
@@ -329,9 +388,9 @@ class ImageProcessingPipeline:
         neck_hsv = cv2.cvtColor(neck, cv2.COLOR_BGR2HSV)
         neck_mean = np.mean(neck_hsv, axis=(0, 1))
 
-        # Cek rasio kulit leher terbuka (H in [0, 25], S in [35, 180], V in [80, 240])
+        # Cek rasio kulit leher terbuka (pakai skin.size = H*W, BUKAN neck_hsv.size = H*W*3)
         skin = (neck_hsv[:, :, 0] <= 25) & (neck_hsv[:, :, 1] >= 35) & (neck_hsv[:, :, 1] <= 180) & (neck_hsv[:, :, 2] >= 80) & (neck_hsv[:, :, 2] <= 240)
-        neck_skin_ratio = float(np.count_nonzero(skin) / max(1, neck_hsv.size))
+        neck_skin_ratio = float(np.count_nonzero(skin) / max(1, skin.size))
 
         # Cek lipatan drapery kain di leher (Sobel Y vertikal vs Sobel X)
         neck_gray = cv2.cvtColor(neck, cv2.COLOR_BGR2GRAY)
@@ -344,24 +403,29 @@ class ImageProcessingPipeline:
         s_diff = float(abs(head_mean[1] - neck_mean[1]))
         v_diff = float(abs(head_mean[2] - neck_mean[2]))
 
-        # Kontinuitas warna: Jika warna penutup kepala dan kain di leher sama
-        color_continuity = (h_diff < 20.0) and (s_diff < 45.0) and (v_diff < 50.0)
+        # Kain hitam/gelap/putih/abu memiliki hue tidak stabil, gunakan toleransi S & V
+        neck_achromatic = (head_mean[1] < 55 and neck_mean[1] < 55) or (head_mean[2] < 70 and neck_mean[2] < 70)
+        color_continuity = (
+            (s_diff < 55.0 and v_diff < 55.0)
+            if neck_achromatic
+            else (h_diff < 22.0 and s_diff < 50.0 and v_diff < 55.0)
+        )
 
-        # Kerudung terdeteksi jika:
-        # a. Kain kepala berlanjut ke leher dan leher tidak berkulit terbuka
-        # b. Atau leher memiliki tekstur lipatan drapery kain tinggi dan leher tertutup
-        is_hijab = (color_continuity and neck_skin_ratio < 0.25) or (neck_drapery > 1.25 and neck_skin_ratio < 0.15)
+        # Kerudung terdeteksi jika warna kain kepala berlanjut ke leher (tanpa kulit leher terbuka)
+        # dan didukung kontinuitas samping atau lipatan kain
+        is_hijab = bool(color_continuity and neck_skin_ratio < 0.25 and (side_continuity or neck_drapery > 1.05))
 
         return {
             "is_hijab": is_hijab,
             "neck_skin_ratio": neck_skin_ratio,
             "color_continuity": color_continuity,
+            "side_continuity": side_continuity,
             "neck_drapery": neck_drapery,
             "h_diff": h_diff,
             "s_diff": s_diff
         }
 
-    def inspect_patch(self, roi_bgr: np.ndarray, person_crop: np.ndarray = None) -> Dict[str, Any]:
+    def inspect_patch(self, roi_bgr: np.ndarray, person_crop: np.ndarray = None, neck_roi: np.ndarray = None) -> Dict[str, Any]:
         """
         Menjalankan seluruh rangkaian analisis citra komprehensif.
         """
@@ -382,6 +446,9 @@ class ImageProcessingPipeline:
                 "is_khaki_tone": False,
                 "h_std": 0.0,
                 "dark_visor_ratio": 0.0,
+                "visor_horizontal_edge": 0.0,
+                "visor_band_ratio": 1.0,
+                "ear_skin_ratio": 0.0,
                 "hair_ratio": 0.0,
                 "skin_ratio": 0.0,
                 "is_hijab": False,
@@ -395,16 +462,17 @@ class ImageProcessingPipeline:
         # 1. Peningkatan Kualitas Citra (Slide P03)
         enhanced_roi = self.enhance_image(roi_bgr)
         hsv_roi = cv2.cvtColor(enhanced_roi, cv2.COLOR_BGR2HSV)
+        raw_hsv_roi = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2HSV)
         gray_roi = cv2.cvtColor(enhanced_roi, cv2.COLOR_BGR2GRAY)
 
         # 2. Segmentasi Model Warna K3 pada Kubah Atas (Slide P04)
         color_mask, best_color, k3_ratio, color_scores = self.extract_k3_color_mask(roi_bgr, hsv_roi)
 
         # 3. Deteksi Kehadiran Rambut Asli pada Kubah Tengah (Slide P04 & P09)
-        hair_ratio, skin_ratio = self.detect_cranial_hair(roi_bgr, hsv_roi)
+        hair_ratio, skin_ratio = self.detect_cranial_hair(roi_bgr, raw_hsv_roi)
 
         # 4. Deteksi Kontinuitas Hijab dari Kepala ke Leher (Slide P04 & P09)
-        hijab_data = self.detect_hijab_and_neck_continuity(roi_bgr, person_crop)
+        hijab_data = self.detect_hijab_and_neck_continuity(roi_bgr, person_crop, neck_roi=neck_roi)
 
         # 5. Analisis Ventilasi Sepeda Berpori Gelap (Slide P07 & P09)
         vent_count, dome_edge_density = self.detect_aerodynamic_vents(gray_roi, hsv_roi)
@@ -412,8 +480,8 @@ class ImageProcessingPipeline:
         # 6. Analisis Ciri Topi Kasual (Slide P07: Lidah Visor & Bayangan)
         cap_feats = self.detect_visor_and_cap_features(enhanced_roi, hsv_roi)
 
-        # 7. Analisis Ciri Helm Motor (Slide P04 & P09: Kaca Visor Gelap / Menutupi Rahang)
-        motor_feats = self.detect_motorcycle_helmet_features(enhanced_roi, hsv_roi)
+        # 7. Analisis Ciri Helm Motor (Slide P04 & P09: pakai roi_bgr asli agar visor gelap tidak tercuci CLAHE)
+        motor_feats = self.detect_motorcycle_helmet_features(roi_bgr, raw_hsv_roi)
 
         # 8. Analisis Tepi Interior & Drapery Kain (Slide P02 & P07)
         edge_metrics = self.analyze_edges_and_texture(gray_roi)
@@ -443,6 +511,8 @@ class ImageProcessingPipeline:
             "h_std": cap_feats["h_std"],
             "dark_visor_ratio": motor_feats["dark_visor_ratio"],
             "visor_horizontal_edge": motor_feats["visor_horizontal_edge"],
+            "visor_band_ratio": motor_feats["visor_band_ratio"],
+            "ear_skin_ratio": motor_feats["ear_skin_ratio"],
             "hair_ratio": hair_ratio,
             "skin_ratio": skin_ratio,
             "is_hijab": hijab_data["is_hijab"],

@@ -283,8 +283,8 @@ async function startWebcam() {
         const constraints = {
             video: {
                 facingMode: { ideal: currentFacingMode },
-                width: { ideal: 640 },
-                height: { ideal: 480 }
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
             },
             audio: false
         };
@@ -409,9 +409,9 @@ function renderCanvasLoop() {
 function drawActiveDetections(ctx, vw, vh) {
     if (!activeDetections || activeDetections.length === 0) return;
 
-    // Fade out detection bounding boxes if no update received in 1.8 seconds
+    // Fade out detection bounding boxes if no update received in 1.0 second
     const timeSinceLast = performance.now() - lastDetectionTime;
-    if (timeSinceLast > 1800) return;
+    if (timeSinceLast > 1000) return;
 
     ctx.save();
     activeDetections.forEach(det => {
@@ -473,9 +473,12 @@ async function sendInferenceFrame() {
 
     isProcessingFrame = true;
 
-    // Downscale frame to ~384px width for blazing fast mobile bandwidth & YOLO inference
-    const targetW = 384;
-    const aspect = (videoElement.videoHeight || 480) / (videoElement.videoWidth || 640);
+    // Keep native YOLO inference resolution (up to 640px) & crisp JPEG quality
+    // so fine headwear features (vents, visor edges, hijab folds) are preserved
+    const srcW = videoElement.videoWidth || 640;
+    const srcH = videoElement.videoHeight || 480;
+    const targetW = Math.min(640, srcW);
+    const aspect = srcH / srcW;
     const targetH = Math.round(targetW * aspect);
 
     if (processingCanvas.width !== targetW || processingCanvas.height !== targetH) {
@@ -483,9 +486,9 @@ async function sendInferenceFrame() {
         processingCanvas.height = targetH;
     }
 
-    // Capture small frame
+    // Capture crisp frame for accurate OpenCV + YOLO analysis
     procCtx.drawImage(videoElement, 0, 0, targetW, targetH);
-    const dataUrl = processingCanvas.toDataURL('image/jpeg', 0.55);
+    const dataUrl = processingCanvas.toDataURL('image/jpeg', 0.80);
 
     try {
         const resp = await fetch('/api/detect/frame', {

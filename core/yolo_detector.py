@@ -97,16 +97,30 @@ class SafetyHelmetDetector:
         # 1. Asosiasikan head_boxes dengan person jika ada, atau proses langsung
         for head in head_boxes:
             hx1, hy1, hx2, hy2 = head["bbox"]
+            hw = max(1, hx2 - hx1)
+            hh = max(1, hy2 - hy1)
+            hcx = (hx1 + hx2) / 2.0
+            hcy = (hy1 + hy2) / 2.0
             head_crop = frame[hy1:hy2, hx1:hx2]
-            
-            # Cari person pembungkus untuk context leher/bahu
+
+            # Ekstrak neck_roi langsung di bawah head bbox agar konteks leher/bahu
+            # selalu akurat (baik kamera dekat maupun jarak jauh)
+            ny1 = max(0, hy2 - int(hh * 0.08))
+            ny2 = min(orig_h, hy2 + int(hh * 0.85))
+            nx1 = max(0, hx1 - int(hw * 0.15))
+            nx2 = min(orig_w, hx2 + int(hw * 0.15))
+            neck_crop = frame[ny1:ny2, nx1:nx2] if (ny2 - ny1) >= 8 and (nx2 - nx1) >= 8 else None
+
+            # Cari person pembungkus untuk context leher/bahu (toleransi margin 15%)
             matched_person = None
             for p in person_boxes:
                 px1, py1, px2, py2 = p["bbox"]
-                if px1 <= hx1 and py1 <= hy1 and px2 >= hx2 and py2 >= hy2:
+                pw = px2 - px1
+                ph = py2 - py1
+                if (px1 - pw * 0.15) <= hcx <= (px2 + pw * 0.15) and (py1 - ph * 0.15) <= hcy <= (py1 + ph * 0.60):
                     matched_person = p
                     break
-            
+
             person_crop = None
             if matched_person:
                 px1, py1, px2, py2 = matched_person["bbox"]
@@ -117,7 +131,8 @@ class SafetyHelmetDetector:
                 yolo_class=head["cls_name"],
                 yolo_conf=head["conf"],
                 head_roi=head_crop,
-                person_crop=person_crop
+                person_crop=person_crop,
+                neck_roi=neck_crop
             )
 
             head_result = {
@@ -154,12 +169,20 @@ class SafetyHelmetDetector:
                 
                 head_crop = frame[head_y1:head_y2, head_x1:head_x2]
                 person_crop = frame[py1:py2, px1:px2]
+                hh_est = max(1, head_y2 - head_y1)
+                hw_est = max(1, head_x2 - head_x1)
+                ny1 = max(0, head_y2 - int(hh_est * 0.08))
+                ny2 = min(orig_h, head_y2 + int(hh_est * 0.85))
+                nx1 = max(0, head_x1 - int(hw_est * 0.15))
+                nx2 = min(orig_w, head_x2 + int(hw_est * 0.15))
+                neck_crop = frame[ny1:ny2, nx1:nx2] if (ny2 - ny1) >= 8 and (nx2 - nx1) >= 8 else None
 
                 classification = self.classifier.classify_headwear(
                     yolo_class="no-helmet",
                     yolo_conf=0.75,
                     head_roi=head_crop,
-                    person_crop=person_crop
+                    person_crop=person_crop,
+                    neck_roi=neck_crop
                 )
 
                 processed_heads.append({

@@ -39,13 +39,14 @@ class HeadwearClassifier:
         yolo_class: str,
         yolo_conf: float,
         head_roi: np.ndarray,
-        person_crop: np.ndarray = None
+        person_crop: np.ndarray = None,
+        neck_roi: np.ndarray = None
     ) -> Dict[str, Any]:
         """
         Mengklasifikasikan status penutup kepala menggunakan fusi YOLO + Pengolahan Citra.
         """
         # Ekstraksi fitur citra digital mendalam
-        features = self.ip_pipeline.inspect_patch(head_roi, person_crop)
+        features = self.ip_pipeline.inspect_patch(head_roi, person_crop, neck_roi=neck_roi)
         
         k3_ratio = features.get("k3_color_ratio", 0.0)
         edge_density = features.get("edge_density", 0.0)
@@ -60,22 +61,28 @@ class HeadwearClassifier:
         h_std = features.get("h_std", 0.0)
         dark_visor_ratio = features.get("dark_visor_ratio", 0.0)
         visor_horizontal_edge = features.get("visor_horizontal_edge", 0.0)
+        visor_band_ratio = features.get("visor_band_ratio", 1.0)
+        ear_skin_ratio = features.get("ear_skin_ratio", 0.0)
         hair_ratio = features.get("hair_ratio", 0.0)
         skin_ratio = features.get("skin_ratio", 0.0)
         r_minus_b = features.get("r_minus_b", 0.0)
         is_hijab_structural = features.get("is_hijab", False)
+        color_continuity = features.get("color_continuity", False)
 
         # -------------------------------------------------------------
         # 1. EVALUASI CIRI FISIK (Slide P02-P11) TANPA SYARAT WARNA HELM
         # -------------------------------------------------------------
-        # Kerudung / Hijab: Kain penutup kepala berlanjut ke leher dengan lipatan/tekstur kain
-        is_kerudung = is_hijab_structural and (edge_density > 0.12 or drapery_ratio > 1.20)
+        # Kerudung / Hijab: Kain penutup kepala berlanjut ke samping & leher tanpa kulit leher terbuka
+        is_kerudung = is_hijab_structural and (color_continuity or edge_density > 0.10 or drapery_ratio > 1.15)
 
-        # Helm Sepeda: Pori ventilasi berulang (>= 2) pada kubah atas
-        is_helm_sepeda = (vent_count >= 3 and dome_edge_density > 0.10) or (vent_count >= 2 and dome_edge_density > 0.15)
+        # Helm Sepeda: Pori ventilasi berulang (>= 3) pada kubah atas
+        is_helm_sepeda = (vent_count >= 3 and dome_edge_density > 0.10) or (vent_count >= 4 and dome_edge_density > 0.07)
         
-        # Helm Motor: Kaca visor gelap menutupi area wajah (>= 25%)
-        is_helm_motor = (dark_visor_ratio >= 0.25) or (dark_visor_ratio >= 0.18 and visor_horizontal_edge > 25.0)
+        # Helm Motor: Kaca visor gelap menutupi area wajah (>= 28% atau >= 20% + tepi horizontal tegas)
+        is_helm_motor = (
+            (dark_visor_ratio >= 0.28) or
+            (dark_visor_ratio >= 0.20 and visor_horizontal_edge > 25.0)
+        )
 
         # Topi Biasa / Baseball Cap:
         # Karakteristik lidah visor memproyeksikan bayangan gelap di dahi bawah visor,
@@ -87,55 +94,52 @@ class HeadwearClassifier:
         )
 
         # Helm Proyek Resmi K3:
-        # Tidak membatasi warna helm; cukup pastikan bukan aksesoris non-K3 dan tanpa rambut terbuka
-        is_real_helmet = (hair_ratio < 0.15) and (not is_helm_sepeda) and (not is_helm_motor) and (not is_topi) and (not is_kerudung)
+        # Tidak membatasi warna helm; pastikan bukan aksesoris non-K3 dan tanpa rambut/kulit ubun-ubun terbuka
+        is_real_helmet = (hair_ratio < 0.25) and (skin_ratio < 0.25) and (not is_helm_sepeda) and (not is_helm_motor) and (not is_topi) and (not is_kerudung)
 
         # -------------------------------------------------------------
         # 2. ENSEMBLE DECISION DENGAN PRIORITAS KESELAMATAN K3
         # -------------------------------------------------------------
         if yolo_class == "helmet":
-            # YOLO mendeteksi adanya objek penutup kepala.
-            # Semua warna helm proyek langsung masuk sebagai 1 kelas HELM PROYEK K3,
-            # kecuali terdeteksi ciri fisik kuat impostor (sepeda/motor/kerudung/topi):
             if is_helm_sepeda:
                 final_label = LABEL_HELM_SEPEDA
-                confidence = max(yolo_conf, 0.85)
+                confidence = min(0.96, max(yolo_conf, 0.72))
             elif is_helm_motor:
                 final_label = LABEL_HELM_MOTOR
-                confidence = max(yolo_conf, 0.88)
+                confidence = min(0.96, max(yolo_conf, 0.74))
             elif is_kerudung:
                 final_label = LABEL_KERUDUNG
-                confidence = max(yolo_conf, 0.88)
+                confidence = min(0.96, max(yolo_conf, 0.75))
             elif is_topi:
                 final_label = LABEL_TOPI
-                confidence = max(yolo_conf, 0.82)
+                confidence = min(0.95, max(yolo_conf, 0.70))
             else:
                 final_label = LABEL_REAL_HELMET
-                confidence = max(yolo_conf, 0.88)
+                confidence = min(0.98, yolo_conf + 0.08)
 
         elif yolo_class == "no-helmet":
-            # YOLO mendeteksi kepala tanpa helm (atau estimasi kepala dari person).
-            # Verifikasi apakah benar-benar kepala terbuka (rambut/kulit) atau aksesoris non-helm:
-            if hair_ratio >= 0.15 or skin_ratio >= 0.35:
-                # Terdeteksi rambut asli atau kulit kepala di area ubun-ubun -> TANPA HELM
+            # Cek kulit kepala/dahi terbuka dulu, lalu hijab (agar hijab gelap tidak dikira rambut), lalu rambut
+            if skin_ratio >= 0.35:
                 final_label = LABEL_NO_HELMET
-                confidence = max(yolo_conf, 0.90)
+                confidence = min(0.96, max(yolo_conf, 0.75))
             elif is_kerudung:
                 final_label = LABEL_KERUDUNG
-                confidence = max(yolo_conf, 0.90)
+                confidence = min(0.95, max(yolo_conf, 0.75))
+            elif hair_ratio >= 0.15:
+                final_label = LABEL_NO_HELMET
+                confidence = min(0.96, max(yolo_conf, 0.75))
             elif is_topi:
                 final_label = LABEL_TOPI
-                confidence = max(yolo_conf, 0.80)
-            elif is_helm_sepeda:
+                confidence = min(0.92, max(yolo_conf, 0.68))
+            elif is_helm_sepeda and hair_ratio < 0.15 and skin_ratio < 0.25:
                 final_label = LABEL_HELM_SEPEDA
-                confidence = 0.80
-            elif is_helm_motor:
+                confidence = min(0.92, max(yolo_conf, 0.68))
+            elif is_helm_motor and hair_ratio < 0.15 and skin_ratio < 0.25:
                 final_label = LABEL_HELM_MOTOR
-                confidence = 0.80
+                confidence = min(0.92, max(yolo_conf, 0.68))
             else:
-                # Default mutlak untuk no-helmet: TANPA HELM KESELAMATAN
                 final_label = LABEL_NO_HELMET
-                confidence = max(yolo_conf, 0.85)
+                confidence = min(0.95, yolo_conf + 0.05)
         else:
             # Fallback jika yolo_class tidak terdefinisi
             if hair_ratio >= 0.15:
