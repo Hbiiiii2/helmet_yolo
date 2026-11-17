@@ -306,9 +306,9 @@ const BrowserYOLO = (() => {
         let confidence = yoloConf;
 
         if (yoloCls === 'helmet') {
-            if (yoloConf < 0.55 && feat.hairRatio >= 0.45 && !isKerudung && !isHelmMotor) {
+            if (!isKerudung && ((feat.hairRatio >= 0.50 && feat.skinRatio >= 0.05) || (yoloConf < 0.55 && feat.hairRatio >= 0.45 && !isHelmMotor))) {
                 finalLabel = 'NO_HELMET';
-                confidence = Math.min(0.88, Math.max(0.60, feat.hairRatio));
+                confidence = Math.min(0.92, Math.max(0.65, feat.hairRatio));
             } else if (isHelmSepeda) {
                 finalLabel = 'HELM_SEPEDA';
                 confidence = Math.min(0.95, Math.max(yoloConf, 0.72));

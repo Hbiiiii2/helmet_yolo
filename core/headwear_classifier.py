@@ -101,11 +101,11 @@ class HeadwearClassifier:
         # 2. ENSEMBLE DECISION DENGAN PRIORITAS KESELAMATAN K3
         # -------------------------------------------------------------
         if yolo_class == "helmet":
-            # Jika YOLO ragu-ragu (< 0.55) dan kubah didominasi rambut gelap (>= 45%),
-            # itu rambut tebal/keriting tanpa helm, bukan helm sepeda/proyek
-            if yolo_conf < 0.55 and hair_ratio >= 0.45 and not is_kerudung and not is_helm_motor:
+            # Jika kubah atas jelas didominasi rambut + kulit dahi terbuka (bukan kerudung),
+            # maka itu kepala tanpa helm meskipun YOLO salah deteksi sebagai helmet
+            if not is_kerudung and ((hair_ratio >= 0.50 and skin_ratio >= 0.05) or (yolo_conf < 0.55 and hair_ratio >= 0.45 and not is_helm_motor)):
                 final_label = LABEL_NO_HELMET
-                confidence = min(0.88, max(0.60, hair_ratio))
+                confidence = min(0.92, max(0.65, hair_ratio))
             elif is_helm_sepeda:
                 final_label = LABEL_HELM_SEPEDA
                 confidence = min(0.96, max(yolo_conf, 0.72))
