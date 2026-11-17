@@ -75,8 +75,8 @@ class HeadwearClassifier:
         # Kerudung / Hijab: Kain penutup kepala berlanjut ke samping & leher tanpa kulit leher terbuka
         is_kerudung = is_hijab_structural and (color_continuity or edge_density > 0.10 or drapery_ratio > 1.15)
 
-        # Helm Sepeda: Pori ventilasi berulang (>= 3) pada kubah atas
-        is_helm_sepeda = (vent_count >= 3 and dome_edge_density > 0.10) or (vent_count >= 4 and dome_edge_density > 0.07)
+        # Helm Sepeda: Pori ventilasi berulang (>= 3) pada kubah atas DAN bukan rambut keriting
+        is_helm_sepeda = (hair_ratio < 0.30) and ((vent_count >= 3 and dome_edge_density > 0.10) or (vent_count >= 4 and dome_edge_density > 0.07))
         
         # Helm Motor: Kaca visor gelap menutupi area wajah (>= 28% atau >= 20% + tepi horizontal tegas)
         is_helm_motor = (
@@ -101,7 +101,12 @@ class HeadwearClassifier:
         # 2. ENSEMBLE DECISION DENGAN PRIORITAS KESELAMATAN K3
         # -------------------------------------------------------------
         if yolo_class == "helmet":
-            if is_helm_sepeda:
+            # Jika YOLO ragu-ragu (< 0.55) dan kubah didominasi rambut gelap (>= 45%),
+            # itu rambut tebal/keriting tanpa helm, bukan helm sepeda/proyek
+            if yolo_conf < 0.55 and hair_ratio >= 0.45 and not is_kerudung and not is_helm_motor:
+                final_label = LABEL_NO_HELMET
+                confidence = min(0.88, max(0.60, hair_ratio))
+            elif is_helm_sepeda:
                 final_label = LABEL_HELM_SEPEDA
                 confidence = min(0.96, max(yolo_conf, 0.72))
             elif is_helm_motor:
@@ -131,7 +136,7 @@ class HeadwearClassifier:
             elif is_topi:
                 final_label = LABEL_TOPI
                 confidence = min(0.92, max(yolo_conf, 0.68))
-            elif is_helm_sepeda and hair_ratio < 0.15 and skin_ratio < 0.25:
+            elif is_helm_sepeda and hair_ratio < 0.10 and skin_ratio < 0.20 and vent_count >= 4:
                 final_label = LABEL_HELM_SEPEDA
                 confidence = min(0.92, max(yolo_conf, 0.68))
             elif is_helm_motor and hair_ratio < 0.15 and skin_ratio < 0.25:

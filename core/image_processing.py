@@ -91,7 +91,7 @@ class ImageProcessingPipeline:
         edges = cv2.Canny(blurred, 40, 120)
         edge_density = cv2.countNonZero(edges) / max(1, upper_dome.size)
 
-        min_vent_area = max(12, int(upper_dome.size * 0.006))
+        min_vent_area = max(20, int(upper_dome.size * 0.012))
         max_vent_area = int(upper_dome.size * 0.15)
         dome_v_mean = float(np.mean(upper_hsv[:, :, 2]))
 
@@ -99,7 +99,7 @@ class ImageProcessingPipeline:
         bh_ksize = max(5, (min(upper_dome.shape[:2]) // 6) | 1)
         bh_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (bh_ksize, bh_ksize))
         blackhat = cv2.morphologyEx(blurred, cv2.MORPH_BLACKHAT, bh_kernel)
-        _, bh_thresh = cv2.threshold(blackhat, 28, 255, cv2.THRESH_BINARY)
+        _, bh_thresh = cv2.threshold(blackhat, 32, 255, cv2.THRESH_BINARY)
         bh_thresh = cv2.morphologyEx(bh_thresh, cv2.MORPH_OPEN, self.kernel_open)
 
         bh_contours, _ = cv2.findContours(bh_thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -107,10 +107,15 @@ class ImageProcessingPipeline:
         for c in bh_contours:
             area = cv2.contourArea(c)
             if min_vent_area <= area <= max_vent_area:
+                hull = cv2.convexHull(c)
+                hull_area = cv2.contourArea(hull)
+                c_solidity = area / hull_area if hull_area > 0 else 0.0
+                if c_solidity < 0.55:
+                    continue
                 mask = np.zeros(upper_dome.shape, dtype=np.uint8)
                 cv2.drawContours(mask, [c], -1, 255, -1)
                 vent_v = cv2.mean(upper_hsv[:, :, 2], mask=mask)[0]
-                if vent_v < (dome_v_mean * 0.68) and vent_v < 80:
+                if vent_v < (dome_v_mean * 0.60) and vent_v < 75:
                     vent_count += 1
 
         # 2. Fallback: kontur tepi Canny jika Black-Hat belum menangkap semua pori
