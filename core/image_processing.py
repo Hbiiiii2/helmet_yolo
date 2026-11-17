@@ -34,13 +34,33 @@ class ImageProcessingPipeline:
         self.kernel_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
         self.kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
 
+    def sharpen_if_blurred(self, bgr_img: np.ndarray, blur_threshold: float = 140.0) -> Tuple[np.ndarray, float]:
+        """
+        Slide P02: Spatial Filtering (Unsharp Masking Adaptif) untuk mengatasi Motion Blur
+        saat pekerja bergerak di lokasi proyek. Hanya aktif jika variansi Laplacian < threshold.
+        """
+        if bgr_img is None or bgr_img.size == 0:
+            return bgr_img, 0.0
+        gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
+        lap_var = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+        if lap_var >= blur_threshold:
+            return bgr_img, lap_var
+
+        # Skala kekuatan sharpening sesuai tingkat blur (maksimal 1.1 agar noise tidak meledak)
+        severity = min(1.0, max(0.2, (blur_threshold - lap_var) / blur_threshold))
+        alpha = 0.45 + 0.65 * severity
+        blurred = cv2.GaussianBlur(bgr_img, (5, 5), 1.2)
+        sharpened = cv2.addWeighted(bgr_img, 1.0 + alpha, blurred, -alpha, 0)
+        return sharpened, lap_var
+
     def enhance_image(self, bgr_img: np.ndarray) -> np.ndarray:
         """
-        Slide P03: Image Enhancement menggunakan CLAHE pada kanal Luminance LAB.
+        Slide P02 & P03: Adaptive Unsharp Masking (anti motion-blur) + CLAHE pada kanal Luminance LAB.
         """
         if bgr_img is None or bgr_img.size == 0:
             return bgr_img
-        lab = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2LAB)
+        sharp_img, _ = self.sharpen_if_blurred(bgr_img)
+        lab = cv2.cvtColor(sharp_img, cv2.COLOR_BGR2LAB)
         l, a, b = cv2.split(lab)
         l_enhanced = self.clahe.apply(l)
         enhanced_lab = cv2.merge((l_enhanced, a, b))

@@ -53,16 +53,14 @@ class SafetyHelmetDetector:
             return {"annotated_frame": frame, "detections": [], "stats": {}}
 
         orig_h, orig_w = frame.shape[:2]
-        # Normalisasi pencahayaan (CLAHE) sebelum YOLO saat kondisi backlight / gelap
-        # agar fitur wajah & helm tetap jelas tanpa mengubah frame anotasi asli
+        # Normalisasi pencahayaan (CLAHE) & reduksi Motion Blur (Unsharp Masking) sebelum YOLO
+        # saat kondisi backlight / pekerja bergerak agar deteksi tetap tajam
         gray_check = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         mean_lum = float(np.mean(gray_check))
         dark_ratio = float(np.count_nonzero(gray_check < 70) / max(1, gray_check.size))
-        infer_frame = (
-            self.classifier.ip_pipeline.enhance_image(frame)
-            if (mean_lum < 115 or dark_ratio > 0.30)
-            else frame
-        )
+        infer_frame, _ = self.classifier.ip_pipeline.sharpen_if_blurred(frame)
+        if mean_lum < 115 or dark_ratio > 0.30:
+            infer_frame = self.classifier.ip_pipeline.enhance_image(infer_frame)
         results = self.model(infer_frame, conf=conf, iou=iou, agnostic_nms=True, verbose=False)
         
         boxes_data = results[0].boxes
