@@ -286,7 +286,8 @@ async function startWebcam() {
             video: {
                 facingMode: { ideal: currentFacingMode },
                 width: { ideal: 1280 },
-                height: { ideal: 720 }
+                height: { ideal: 720 },
+                frameRate: { ideal: 30, max: 30 }
             },
             audio: false
         };
@@ -375,37 +376,44 @@ function takeWebcamSnapshot() {
 }
 
 // -------------------------------------------------------------
-// LOOP 1: High-Frequency Smooth Viewfinder (30 - 60 FPS)
+// LOOP 1: Smooth Viewfinder (Max 30 FPS)
 // -------------------------------------------------------------
-function renderCanvasLoop() {
+let lastRenderTime = 0;
+const TARGET_DISPLAY_INTERVAL = 1000 / 30;
+
+function renderCanvasLoop(now) {
     if (!isWebcamRunning) return;
 
-    if (videoElement && videoElement.readyState >= 2) {
-        const vw = videoElement.videoWidth;
-        const vh = videoElement.videoHeight;
+    if (now - lastRenderTime >= TARGET_DISPLAY_INTERVAL) {
+        lastRenderTime = now - ((now - lastRenderTime) % TARGET_DISPLAY_INTERVAL);
 
-        if (vw > 0 && vh > 0) {
-            if (outputCanvas.width !== vw || outputCanvas.height !== vh) {
-                outputCanvas.width = vw;
-                outputCanvas.height = vh;
+        if (videoElement && videoElement.readyState >= 2) {
+            const vw = videoElement.videoWidth;
+            const vh = videoElement.videoHeight;
+
+            if (vw > 0 && vh > 0) {
+                if (outputCanvas.width !== vw || outputCanvas.height !== vh) {
+                    outputCanvas.width = vw;
+                    outputCanvas.height = vh;
+                }
+
+                canvasCtx.save();
+                // If Front/Selfie Camera, mirror horizontally for natural preview
+                if (currentFacingMode === 'user') {
+                    canvasCtx.translate(vw, 0);
+                    canvasCtx.scale(-1, 1);
+                }
+                canvasCtx.drawImage(videoElement, 0, 0, vw, vh);
+                canvasCtx.restore();
+
+                // Overlay active AI bounding boxes on top of live video
+                drawActiveDetections(canvasCtx, vw, vh);
             }
-
-            canvasCtx.save();
-            // If Front/Selfie Camera, mirror horizontally for natural preview
-            if (currentFacingMode === 'user') {
-                canvasCtx.translate(vw, 0);
-                canvasCtx.scale(-1, 1);
-            }
-            canvasCtx.drawImage(videoElement, 0, 0, vw, vh);
-            canvasCtx.restore();
-
-            // Overlay active AI bounding boxes on top of live video
-            drawActiveDetections(canvasCtx, vw, vh);
         }
-    }
 
-    displayFrameCount++;
-    updateFpsDisplay();
+        displayFrameCount++;
+        updateFpsDisplay();
+    }
 
     renderRafId = requestAnimationFrame(renderCanvasLoop);
 }
